@@ -1,0 +1,100 @@
+#!/usr/bin/env python
+
+import socket
+import threading
+import SocketServer
+import optparse
+import sys
+import signal
+import time
+
+def log(msg):
+	sys.stderr.write(str(msg))
+	sys.stderr.write("\n")
+	sys.stderr.flush()
+
+
+class PingerThread:
+	list = []
+	def register(self, p):
+		self.list.append(p)
+
+	def unregister(self, p):
+		self.list.remove(p)
+
+	def __init__(self):
+		t = threading.Thread(target=self.loop)
+		t.daemon = True
+		t.start()
+
+	def loop(self):
+		while True:
+			for p in self.list:
+				p()
+			time.sleep(1)
+
+pinger = PingerThread()
+
+
+class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
+
+	counter = 0
+	last_counter = 0
+
+	def ping(self):
+		global options
+		if self.counter == self.last_counter:
+			return
+
+		self.lock.acquire()
+		try: 
+			sys.stdout.flush()
+			if options.reply:
+				self.request.sendall("%d\n" % self.counter)
+			self.last_counter = self.counter
+		finally:
+			self.lock.release()
+
+	def handle(self):
+		global options, pinger
+		host = socket.gethostbyaddr(self.client_address[0])[0]
+		self.counter = 0
+		f = self.request.makefile()
+		self.lock = threading.Lock()
+		pinger.register(self.ping)
+		try:
+			for line in f:
+				self.lock.acquire()
+				try:
+					sys.stdout.write("%s: %s" % (host, line))
+					self.counter += 1
+				finally:
+					self.lock.release()
+		finally:
+			pinger.unregister(self.ping)
+
+class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
+	pass
+
+if __name__ == "__main__":
+	parser = optparse.OptionParser(usage="Usage: %prog port dest_file")
+
+	parser.add_option('-r', '--reply', action="store_true", dest="reply", help="Reply number of processed lines every second or so.")
+
+	options, args = parser.parse_args()
+
+	if len(args) != 2:
+		parser.print_help()
+	else:
+		HOST, PORT = "0.0.0.0", int(args[0])
+		
+		ThreadedTCPServer.allow_reuse_address = True
+		server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
+		server.daemon_threads = True
+		try:
+			server.serve_forever()
+		except KeyboardInterrupt:
+			pass
+					
+#import pdb ; pdb.set_trace()
+

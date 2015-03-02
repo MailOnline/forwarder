@@ -1,0 +1,341 @@
+#!/usr/bin/env python
+
+import sys
+import time
+import os.path
+import glob
+import socket
+import optparse
+import md5
+import zipfile
+import tempfile
+import shutil
+import subprocess
+import threading
+import Queue
+
+exit_signal = Queue.Queue()
+
+def main():
+	parser = optparse.OptionParser(usage="Usage: %prog [options] <pattern0> ... <patternN>", description=
+		"Outputs the content of files resolved by the patterns passed as "
+		"parameters and keep monitoring them for new content. "
+		"Optionally the offsets can be writen to the <offsets> file. Which "
+		"will be read when starting. "
+		"IMPORTANT: only files with size >= signature-length (default 50) bytes will be processed. "
+		"Zip files will be open recursively, and only once.")
+
+	parser.add_option('-f', '--follow', action="store_true", dest="follow", help="Pools the file very second for changes in an infinite loop.", default=False)
+	parser.add_option('-p', '--offsets', action="store", dest="offsets", help="File to persist the last offsets read for each file. If it doesn't exist, the files are read from beginning.", default='/dev/null')
+	parser.add_option('-t', '--tcp', action="store", dest="host", help="Sends the output to the host:port via TCP.", metavar="HOST:PORT")
+	parser.add_option('-s', '--signature-length', action="store", dest="signatureLength", help="First BYTES of the each file will be used as it's ID in offsets file, so the files can be renamed not losing the offset. Default is 50.", metavar="BYTES", default=50)
+	parser.add_option('-g', '--greater-or-equal-than', action="store", dest="starting", help="Only copy lines which are >= than STARTING in lexicographical order. In lines starting with datetime, this can be used to ignore older events.")
+	parser.add_option('-e', '--start-from-the-tail', action="store_true", dest="start_from_tail", help="Generate offsets file at the tail of every file. Useful if you want to start following the end of all files returned in pattern. .. Well, ask Fabio.")
+	parser.add_option('-l', '--filter', action="store", dest="filter", help="Command or shell script that will filter the events using stdin and stdout.")
+	parser.add_option('-r', '--retry-on-network-error', action="store_true", dest="retry_on_network_error", help="Keep trying to reconnect instead of exiting with an error.")
+
+	options, args = parser.parse_args()
+
+	if len(args) == 0:
+		parser.print_help()
+	else:
+		output = Stdout()
+		if options.host:
+			a = options.host.split(":")
+			try:
+				output = Netcat(a[0], int(a[1]), options.retry_on_network_error)
+			except socket.error, e:
+				log("Socket error: %s" % str(e))
+				sys.exit(1)
+
+		if options.filter:
+			p = subprocess.Popen(['bash', '-c', options.filter], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+			last_output = output
+			output = p.stdin
+			input = p.stdout
+			def filter_pipe():
+				while True:
+					line = input.readline().strip()
+					try:
+						last_output.write(line + "\n")
+						last_output.flush()
+					except socket.error, e:
+						log("Socket error in filer: %s" % e)
+						break
+					except:
+						log("Some exception happened. Exiting.")
+						break
+				exit_signal.put(True)
+
+			t = threading.Thread(target=filter_pipe)
+			t.daemon = True
+			t.start()
+
+
+		try:
+			Tail(options, args, output).run()
+		except KeyboardInterrupt:
+			pass
+
+
+def log(msg):
+	sys.stderr.write(str(msg))
+	sys.stderr.write("\n")
+	sys.stderr.flush()
+
+
+class Stdout(object):
+	def write(self, msg):
+		sys.stdout.write(msg)
+
+	def flush(self):
+		sys.stdout.flush()
+
+	def fileno(self):
+		return sys.stdout.fileno()
+
+
+class Netcat(object):
+	def __init__(self, host, port, retry_on_network_error):
+		self.retry_on_network_error = retry_on_network_error
+		self.addr = (host, port)
+		self.show_error_message = True
+		self.send_last = False
+		self.connect()
+
+	def connect(self):
+		while True:
+			try:
+				self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+				self.s.connect(self.addr)
+				self.show_error_message = True
+				break;
+			except socket.error, e:
+				self.error("Socket error: %s" % e)
+			except IOError, e:
+				self.error("IOError: %s" % e)
+			self.exit_or_retry()
+
+	def error(self, msg):
+		if self.show_error_message:
+			log(msg)
+
+	def exit_or_retry(self):
+		if not self.retry_on_network_error:
+			sys.exit(1)
+
+		self.error("Retrying every 3 seconds.")
+		self.show_error_message = False
+		time.sleep(3)
+
+
+	def write(self, msg):
+		while True:
+			try:
+				if self.send_last:
+					self.s.sendall(self.last_msg)
+				self.s.sendall(msg)
+				self.last_msg = msg
+				self.send_last = False
+				break
+			except socket.error, e:
+				self.error("Socket error: %s" % e)
+			except IOError, e:
+				self.error("IOError: %s" % e)
+			self.send_last = True
+			self.exit_or_retry()
+			self.reconnect()
+
+
+	def reconnect(self):
+		if self.s:
+			try:
+				self.s.close()
+			except:
+				pass
+		self.connect()
+
+	def flush(self):
+		pass
+
+	def fileno(self):
+		return self.s.fileno()
+
+
+class Info(object):
+	def __init__(self, line=None, sig=None, name='-', offset=0):
+		if line:
+			a = line.split(' ')
+			self.sig = a[0]
+			self.offset = int(a[1])
+			self.name = ' '.join(a[2:])
+		else:
+			self.sig = sig
+			self.name = name
+			self.offset = offset
+
+
+	def dump(self):
+		return '%s %d %s' % (self.sig, self.offset, self.name)
+
+class Tail(object):
+
+	def __init__(self, options, fnpatterns, output):
+		self.fnpatterns = fnpatterns
+		self.offsetsfn = options.offsets
+		self.signatureLength = int(options.signatureLength)
+		self.follow = options.follow
+		self.output = output
+		self.starting = options.starting
+		self.start_from_tail = options.start_from_tail
+		self.readOffsets()
+
+	def persistOffsets(self):
+		temp = '%s-temp' % self.offsetsfn
+		f = open(temp,'w')
+		try:
+			for sig, info in self.offsets.iteritems():
+				f.write(info.dump())
+				f.write('\n')
+			f.flush()
+		finally:
+			f.close()
+
+		shutil.move(temp, self.offsetsfn)
+
+	def readOffsets(self):
+		if not os.path.isfile(self.offsetsfn):
+			self.offsets = {}
+			return
+
+		f = open(self.offsetsfn,'r')
+		try:
+			self.offsets = {}
+			for line in f:
+				line = line.strip()
+				if len(line) == 0:
+					continue
+				info = Info(line.strip())
+				self.offsets[info.sig] = info
+		finally:
+			f.close()
+
+	def generateSignature(self, f):
+		offset = f.tell();
+		line = f.read(self.signatureLength)
+		f.seek(offset)
+		if len(line) == 0:
+			return None
+		else:
+			return md5.new(line).hexdigest()
+
+	def purgeOffsetsNotIn(self, existing):
+		newOffsets = {}
+		for sig in existing:
+			newOffsets[sig] = self.offsets[sig]
+		if len(self.offsets) != len(newOffsets):
+			self.offsets = newOffsets
+			self.persistOffsets()
+
+	def copy(self, f):
+		for line in f:
+			if not self.starting or line >= self.starting:
+				self.output.write(line)
+		self.output.flush()
+
+	def isCompressed(self, fn):
+		return fn.endswith('.zip') or fn.endswith('.gz')
+
+
+	def visitzip(self, zip, visitor=None):
+		zf = zipfile.ZipFile(zip)
+		try:
+			if visitor:
+				for name in zf.namelist():
+					visitor(name, zf)
+			return zf.namelist()
+		finally:
+			zf.close()
+
+
+	def unzip(self, to, f, fn):
+		if sys.version_info[0] >= 2 and sys.version_info[1] >= 6:
+			return self.visitzip(f, lambda n,z: z.extract(n, to))
+
+		os.system('unzip -qq %s -d %s' % (fn, to))
+		return self.visitzip(f)
+
+
+	def processCompressedFile(self, f, fn):
+		path = tempfile.mkdtemp()
+		for name in self.unzip(path, f, fn):
+			self.processFile('%s/%s' % (path, name), {})
+		shutil.rmtree(path)
+
+
+	def processFile(self, fn, existing):
+		f = open(fn, 'rb')
+		try:
+			sig = self.generateSignature(f)
+			if not sig:
+				return
+
+			if sig in existing and os.path.getsize(fn) != os.path.getsize(existing[sig]):
+				log("WARN Files '%s' and '%s' have same signature and different sizes" % (fn, existing[sig]))
+
+			info = self.offsets.get(sig, Info(sig=sig, name=fn))
+
+			lastOffset = info.offset
+
+			info.name = fn
+
+			if self.isCompressed(fn):
+				if info.offset == 0:
+					if not self.start_from_tail:
+						self.processCompressedFile(f, fn)
+					info.offset = -1					
+			else:
+				if self.start_from_tail:
+					info.offsets = os.path.getsize(fn)
+				f.seek(info.offset)
+				self.copy(f)
+				info.offset = f.tell()
+
+			existing[sig] = fn
+			
+			if lastOffset != info.offset:
+				self.offsets[sig] = info
+				self.persistOffsets()
+
+		finally:
+			f.close()
+
+	def run(self):
+		while True:
+			if not exit_signal.empty():
+				sys.exit(1)
+			existing = {}
+			for fnpattern in self.fnpatterns:
+				for fn in glob.glob(fnpattern):
+					try:
+						if not os.path.isfile(fn):
+							log("File no longer exists: %s" % fn)
+							continue
+						if os.path.getsize(fn) < self.signatureLength:
+							continue
+						self.processFile(fn, existing)
+					except Exception, e:
+						log("Exception: %s" % e)
+			if len(existing) != len(self.offsets):
+				self.purgeOffsetsNotIn(existing)
+			if not self.follow:
+				break
+			time.sleep(1)
+
+					
+
+if __name__ == '__main__':
+	main()
+
+#import pdb ; pdb.set_trace()
+
