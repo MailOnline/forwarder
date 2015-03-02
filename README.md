@@ -11,8 +11,7 @@ The network output can be used to send events to [Splunk](http://www.splunk.com/
 Why another one?
 ----------------
 
-Because it was easier to write a new script, than to update some machines with a newer version of Python, or any other script engine.
-
+Because we needed a tool that could run solely on Python 2.4
 
 Requirement
 -----------
@@ -72,7 +71,7 @@ Every second `sender` will open all files it monitors that the size is >= than t
 
 If a filter has been specified, the new content sent to it, and then the filter's result is gonna be output.
 
-After the new content is successfully sent either to stdout, network or filter, the OFFSETS file is recreated with the last known offets of each file.
+After the new content is successfully sent either to stdout, network or filter, the OFFSETS file is recreated with the last known offsets of each file.
 
 #### Signature
 
