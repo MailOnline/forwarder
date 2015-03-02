@@ -13,8 +13,13 @@ import shutil
 import subprocess
 import threading
 import Queue
+import signal
 
-exit_signal = Queue.Queue()
+filter_stopped = Queue.Queue()
+stop_signal = Queue.Queue()
+
+def should_stop():
+	return not stop_signal.empty()
 
 def main():
 	parser = optparse.OptionParser(usage="Usage: %prog [options] <pattern0> ... <patternN>", description=
@@ -33,6 +38,7 @@ def main():
 	parser.add_option('-e', '--start-from-the-tail', action="store_true", dest="start_from_tail", help="Generate offsets file at the tail of every file. Useful if you want to start following the end of all files returned in pattern. .. Well, ask Fabio.")
 	parser.add_option('-l', '--filter', action="store", dest="filter", help="Command or shell script that will filter the events using stdin and stdout.")
 	parser.add_option('-r', '--retry-on-network-error', action="store_true", dest="retry_on_network_error", help="Keep trying to reconnect instead of exiting with an error.")
+	parser.add_option('-d', '--delay-exit', action="store", dest="delay_exit", help="Upon a SIGINT or SIGTERM, stops processing files and exit after SECONDS. This gives a chance for the filter to flushes it's buffers. Default is 0 (disabled).", default=0, metavar="SECONDS", type="float")
 
 	options, args = parser.parse_args()
 
@@ -47,6 +53,19 @@ def main():
 			except socket.error, e:
 				log("Socket error: %s" % str(e))
 				sys.exit(1)
+
+
+		if options.delay_exit > 0:
+			signal_names = dict((k, v) for v, k in reversed(sorted(signal.__dict__.items()))
+ 				if v.startswith('SIG') and not v.startswith('SIG_'))
+			def signal_handler(signal, frame):
+				log("%s caught, delaying exit in %.1f second(s) so filter have time to flush internal buffers." % (signal_names[signal], options.delay_exit))
+				stop_signal.put(True)
+				time.sleep(options.delay_exit)
+				sys.exit(0)
+
+			signal.signal(signal.SIGINT, signal_handler)
+			signal.signal(signal.SIGTERM, signal_handler)
 
 		if options.filter:
 			p = subprocess.Popen(['bash', '-c', options.filter], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
@@ -65,7 +84,7 @@ def main():
 					except:
 						log("Some exception happened. Exiting.")
 						break
-				exit_signal.put(True)
+				filter_stopped.put(True)
 
 			t = threading.Thread(target=filter_pipe)
 			t.daemon = True
@@ -191,6 +210,9 @@ class Tail(object):
 		self.readOffsets()
 
 	def persistOffsets(self):
+		if self.offsetsfn == '/dev/null':
+			return
+
 		temp = '%s-temp' % self.offsetsfn
 		f = open(temp,'w')
 		try:
@@ -238,9 +260,13 @@ class Tail(object):
 			self.persistOffsets()
 
 	def copy(self, f):
+		if should_stop():
+			return
 		for line in f:
 			if not self.starting or line >= self.starting:
 				self.output.write(line)
+			if should_stop():
+				break;
 		self.output.flush()
 
 	def isCompressed(self, fn):
@@ -312,7 +338,7 @@ class Tail(object):
 
 	def run(self):
 		while True:
-			if not exit_signal.empty():
+			if not filter_stopped.empty():
 				sys.exit(1)
 			existing = {}
 			for fnpattern in self.fnpatterns:

@@ -51,6 +51,10 @@ Options:
   -r, --retry-on-network-error
                         Keep trying to reconnect instead of exiting with an
                         error.
+  -d SECONDS, --delay-exit=SECONDS
+                        Upon a SIGINT or SIGTERM, stops processing files and
+                        exit after SECONDS. This gives a chance for the filter
+                        to flushes it's buffers. Default is 0 (disabled).
 ```
 
 Example
@@ -58,10 +62,10 @@ Example
 
 ```
 $ sender '/service/*/log/current' -p ~/services-offsets -t 10.0.0.1:7878 \
-	-r -f -l 'grep --line-buffer -v TRACE'
+	-r -f -l 'grep --line-buffer -v TRACE' -d 0.5
 ```
 
-This keep checking every second for changes in all `/service/*/log/current` files and sent its content to the tcp address `10.0.0.1:7878` after it is filtered by `grep --line-buffer -v TRACE`, and it will keep retrying in case of network failure.
+This keep checking every second for changes in all `/service/*/log/current` files and sent its content to the tcp address `10.0.0.1:7878` after it is filtered by `grep --line-buffer -v TRACE`, and it will keep retrying in case of network failure. Also, upon receiving a SIGINT or SIGTERM, stop sending new content to filter and give it half of second to flush it's buffers.
 
 
 How does it work?
