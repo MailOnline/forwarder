@@ -6,6 +6,12 @@ Monitor log files and forward their content to either stdout or network.
 After sucessfully forward the new content, it saves the offset of the files in the OFFSETS file. So to continue where it left off after a restart.
 
 
+Why another one?
+----------------
+
+Because we needed one that would run in nodes with only Python version 2.4 available.
+
+
 Usage
 -----
 
