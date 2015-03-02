@@ -1,0 +1,9 @@
+#!/usr/bin/env python
+
+import sys
+import os
+import subprocess
+
+os.setpgrp()
+p = subprocess.Popen(['bash', '-c', sys.argv[1]], stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
+p.wait()

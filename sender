@@ -16,6 +16,7 @@ import Queue
 import signal
 
 filter_stopped = Queue.Queue()
+filter = None
 stop_signal = Queue.Queue()
 
 def should_stop():
@@ -55,25 +56,13 @@ def main():
 				sys.exit(1)
 
 
-		if options.delay_exit > 0:
-			signal_names = dict((k, v) for v, k in reversed(sorted(signal.__dict__.items()))
- 				if v.startswith('SIG') and not v.startswith('SIG_'))
-			def signal_handler(signal, frame):
-				log("%s caught, delaying exit in %.1f second(s) so filter have time to flush internal buffers." % (signal_names[signal], options.delay_exit))
-				stop_signal.put(True)
-				time.sleep(options.delay_exit)
-				sys.exit(0)
-
-			signal.signal(signal.SIGINT, signal_handler)
-			signal.signal(signal.SIGTERM, signal_handler)
-
 		if options.filter:
-			p = subprocess.Popen(['bash', '-c', options.filter], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+			filter = subprocess.Popen(["%s/filter_wrapper" % os.path.dirname(sys.argv[0]), options.filter], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 			last_output = output
-			output = p.stdin
-			input = p.stdout
+			output = filter.stdin
+			input = filter.stdout
 			def filter_pipe():
-				while True:
+				while filter.poll() is None:
 					line = input.readline().strip()
 					try:
 						last_output.write(line + "\n")
@@ -89,7 +78,29 @@ def main():
 			t = threading.Thread(target=filter_pipe)
 			t.daemon = True
 			t.start()
+		else:
+			filter = None
 
+		if options.delay_exit > 0 or filter:
+			signal_names = dict((k, v) for v, k in reversed(sorted(signal.__dict__.items()))
+ 				if v.startswith('SIG') and not v.startswith('SIG_'))
+			def signal_handler(signal, frame):
+				log("%s caught" % signal_names[signal])
+				log("Stop processing files")
+				stop_signal.put(True)
+				if filter:
+					time.sleep(0.2)
+					log("Closing filter")
+					filter.stdin.close()
+					log("Waiting for filter to finish")
+					filter.wait()
+				if options.delay_exit > 0:
+					log("Delaying exit in %.1f second(s) so filter have time to flush internal buffers." % options.delay_exit)
+					time.sleep(options.delay_exit)
+				sys.exit(0)
+
+			signal.signal(signal.SIGINT, signal_handler)
+			signal.signal(signal.SIGTERM, signal_handler)
 
 		try:
 			Tail(options, args, output).run()
