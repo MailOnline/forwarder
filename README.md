@@ -20,8 +20,8 @@ Requirement
 - Python >= 2.4
 
 
-Usage
------
+Usage: `sender`
+---------------
 
 ```
 Options:
@@ -53,6 +53,16 @@ Options:
                         Keep trying to reconnect instead of exiting with an
                         error.
 ```
+
+Example
+-------
+
+```
+$ sender '/service/*/log/current' -p ~/services-offsets -t 10.0.0.1:7878 \
+	-r -f -l 'grep --line-buffer -v TRACE'
+```
+
+This keep checking every second for changes in all `/service/*/log/current` files and sent its content to the tcp address `10.0.0.1:7878` after it is filtered by `grep --line-buffer -v TRACE`, and it will keep retrying in case of network failure.
 
 
 How does it work?
