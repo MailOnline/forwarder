@@ -3,13 +3,21 @@ forwarder
 
 Monitor log files and forward their content to either stdout or network.
 
-After sucessfully forward the new content, it saves the offset of the files in the OFFSETS file. So to continue where it left off after a restart.
+After successfully forward the new content, it saves the offset of the files in the OFFSETS file. So to continue where it left off after a restart.
+
+The network output can be used to send events to [Splunk](http://www.splunk.com/)
 
 
 Why another one?
 ----------------
 
-Because we needed one that would run in nodes with only Python version 2.4 available.
+Because it was easier to write a new script, than to update some machines with a newer version of Python, or any other script engine.
+
+
+Requirement
+-----------
+
+- Python >= 2.4
 
 
 Usage
@@ -20,7 +28,7 @@ $ ./sender -h
 Usage: sender [options] <pattern0> ... <patternN>
 
 Outputs the content of files resolved by the patterns passed as parameters and
-keep monitoring them for new content. Optionally the offsets can be writen to
+keep monitoring them for new content. Optionally the offsets can be written to
 the <offsets> file. Which will be read when starting. IMPORTANT: only files
 with size >= signature-length (default 50) bytes will be processed. Zip files
 will be open recursively, and only once.
@@ -56,6 +64,20 @@ Options:
 ```
 
 
+How does it work?
+-----------------
+
+Every second `sender` will open all files it monitors that the size is >= than the signature-length, seek to last offset known, and tries to read more bytes. If there is new content, it will send either to stdout or network or the filter.
+
+if a filter has been specified, the new content sent to it, and then the filter's result is gonna be output.
+
+After successfully sent either to stdout, network or filter, `sender` will save last byte read offset into the OFFSETS file.
+
+`sender` uses the "signature" instead of filename to identify the file. And the signature is the md5 of the first `signature-length` bytes, which defaults to 50 bytes. This way the file can be renamed (rolled), and it's content won't be output again.
+
+Zip files will be open and processed only once. `sender` will unzip them to a temp folder and each file will be recursively processed as if it was a normal file (trying to match it's signature with the persisted OFFSETS file). After all files are processed, the temp folder is removed and a single entry is added to the OFFSETS file for the zip one.
+
+
 Filters
 -------
 
@@ -68,7 +90,7 @@ This will remove all lines with TRACE in it from the output
 $ ./sender /path/to/mylog.log -l 'grep --line-buffer -v TRACE'
 ```
 
-Important: some posix tools like `grep` by default only flush after every line if the output is TTY (user interactive session), and disable it otherwise. For so we use a `grep --line-buffer` to force it to flush after evert line, so we won't lose the lines kept in its internal buffers in case of a restart.
+Important: tools like `grep` usually by default flush after every line only if the output is a TTY (user interactive session), and disable it otherwise. For the example uses use the option `--line-buffer` to force grep to flush after every line, so we won't lose the lines kept in its internal buffers in case of a restart.
 
 The argument passed to filter will be run with `sh -c`, which means you can pass any bash script there or chain multiple commands using pipe, like:
 ```
