@@ -40,8 +40,21 @@ def main():
 	parser.add_option('-l', '--filter', action="store", dest="filter", help="Command or shell script that will filter the events using stdin and stdout.")
 	parser.add_option('-r', '--retry-on-network-error', action="store_true", dest="retry_on_network_error", help="Keep trying to reconnect instead of exiting with an error.")
 	parser.add_option('-d', '--delay-exit', action="store", dest="delay_exit", help="Upon a SIGINT or SIGTERM, stops processing files and exit after SECONDS. This gives a chance for the filter to flushes it's buffers. Default is 0 (disabled).", default=0, metavar="SECONDS", type="float")
+	parser.add_option('-i', '--dump-pid', action="store", dest="dump_pid", help="Write process id to this file. Disabled by default.", metavar="FILE")
+	parser.add_option('-k', '--kill', action="store", dest="kill", help="Send SIGTERM to process id saved in FILE and exit", metavar="FILE")
 
 	options, args = parser.parse_args()
+
+	if options.dump_pid:
+		f = open(options.dump_pid,'w')
+		f.write("%d" % os.getpid())
+		f.flush()
+		f.close()
+
+	if options.kill:
+		pid = int(open(options.kill).readline())
+		os.kill(pid, signal.SIGTERM)
+		sys.exit(0)
 
 	if len(args) == 0:
 		parser.print_help()
