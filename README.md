@@ -51,17 +51,21 @@ Options:
   -r, --retry-on-network-error
                         Keep trying to reconnect instead of exiting with an
                         error.
+  -i FILE, --dump-pid=FILE
+                        Write process id to this file. Disabled by default.
+  -k FILE, --kill=FILE  Send SIGTERM to process id saved in FILE and exit
 ```
 
 Example
 -------
 
 ```
-$ sender '/service/*/log/current' -p ~/services-offsets -t 10.0.0.1:7878 \
-	-r -f -l 'grep --line-buffer -v TRACE' -d 0.5
+$ sender -i ~/services-sender.pid '/service/*/log/current' \
+    -p ~/services-offsets -t 10.0.0.1:7878 \
+    -r -f -l 'grep --line-buffer -v TRACE' 
 ```
 
-This keep checking every second for changes in all `/service/*/log/current` files and sent its content to the tcp address `10.0.0.1:7878` after it is filtered by `grep --line-buffer -v TRACE`, and it will keep retrying in case of network failure. Also, upon receiving a SIGINT or SIGTERM, stop sending new content to filter and give it half of second to flush it's buffers.
+This will save it's process id to `~/services-sender.pid` file, then keeps checking every second for changes in all `/service/*/log/current` files and send its content to the tcp address `10.0.0.1:7878` after it is filtered by `grep --line-buffer -v TRACE`, and it will keep retrying in case of network failure.
 
 
 How does it work?
@@ -73,9 +77,14 @@ If a filter has been specified, the new content sent to it, and then the filter'
 
 After the new content is successfully sent either to stdout, network or filter, the OFFSETS file is recreated with the last known offsets of each file.
 
+#### Signals
+
+Upon receiving a SIGINT or SIGTERM signals, `sender` will stop processing the files, save whatever OFFSET it has already succefully sent to output, close the filter's stdin, and then wait for the filter to finish. Only then it will actually exit.
+
+
 #### Signature
 
-`sender` uses the "signature" instead of filename to identify the file. And the signature is the md5 of the first `signature-length` bytes, which defaults to 50 bytes. This way the file can be renamed (rolled), and it's content won't be output again.
+`sender` uses the *signature* instead of filename to identify the file. And the *signature* is the md5 of the first `signature-length` bytes, which defaults to 50 bytes. This way the file can be renamed (rolled), and it's content won't be processed again.
 
 #### Zip Files
 
@@ -102,6 +111,13 @@ $ ./sender /path/to/mylog.log -l "grep --line-buffer MY_LOGS | awk '{print \$2}'
 ```
 
 Notice the above example escapes the `$`, because we're using double codes for the argument and we want to keep bash from resolving `$2`.
+
+Filter Wrapper
+--------------
+
+`filter_wrapper` is used by `sender` to actually run the filter. Before it does so, `filter_wrapper` puts itself in a different process group, ensuring then it won't receive posix signals sent to its parent. This way, if a SIGINT or SIGTERM is sent to `sender`, it has the chance to gracefully close the filter's stdin and let it flushes whatever internal buffer may keep.
+
+Note that when using it with service managers like **Solaris SMF**, the standard `:kill` method to stop a service sends a SIGTERM to all the processes started by this service, not only the ones in the same processes group. For that case, you can use the same `sender` in the SMF stop method, using the option `-k` to send the SIGTERM to current sender.
 
 
 Network Protocol
