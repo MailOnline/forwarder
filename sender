@@ -16,7 +16,6 @@ import Queue
 import signal
 
 filter_stopped = Queue.Queue()
-filter = None
 stop_signal = Queue.Queue()
 
 def should_stop():
@@ -39,7 +38,6 @@ def main():
 	parser.add_option('-e', '--start-from-the-tail', action="store_true", dest="start_from_tail", help="Generate offsets file at the tail of every file. Useful if you want to start following the end of all files returned in pattern. .. Well, ask Fabio.")
 	parser.add_option('-l', '--filter', action="store", dest="filter", help="Command or shell script that will filter the events using stdin and stdout.")
 	parser.add_option('-r', '--retry-on-network-error', action="store_true", dest="retry_on_network_error", help="Keep trying to reconnect instead of exiting with an error.")
-	parser.add_option('-d', '--delay-exit', action="store", dest="delay_exit", help="Upon a SIGINT or SIGTERM, stops processing files and exit after SECONDS. This gives a chance for the filter to flushes it's buffers. Default is 0 (disabled).", default=0, metavar="SECONDS", type="float")
 	parser.add_option('-i', '--dump-pid', action="store", dest="dump_pid", help="Write process id to this file. Disabled by default.", metavar="FILE")
 	parser.add_option('-k', '--kill', action="store", dest="kill", help="Send SIGTERM to process id saved in FILE and exit", metavar="FILE")
 
@@ -76,9 +74,11 @@ def main():
 			input = filter.stdout
 			def filter_pipe():
 				while filter.poll() is None:
-					line = input.readline().strip()
+					line = input.readline()
+					if len(line) == 0: # in some platforms readline returns zero-length strings if process has terminated and python still doesnt know it.. weird right?
+						continue
 					try:
-						last_output.write(line + "\n")
+						last_output.write(line)
 						last_output.flush()
 					except socket.error, e:
 						log("Socket error in filer: %s" % e)
@@ -91,25 +91,22 @@ def main():
 			t = threading.Thread(target=filter_pipe)
 			t.daemon = True
 			t.start()
-		else:
-			filter = None
 
-		if options.delay_exit > 0 or filter:
 			signal_names = dict((k, v) for v, k in reversed(sorted(signal.__dict__.items()))
  				if v.startswith('SIG') and not v.startswith('SIG_'))
 			def signal_handler(signal, frame):
 				log("%s caught" % signal_names[signal])
 				log("Stop processing files")
 				stop_signal.put(True)
-				if filter:
-					time.sleep(0.2)
-					log("Closing filter")
-					filter.stdin.close()
-					log("Waiting for filter to finish")
+				time.sleep(0.2)
+				log("Closing filter")
+				filter.stdin.close()
+				log("Waiting for filter to finish")
+				try:
 					filter.wait()
-				if options.delay_exit > 0:
-					log("Delaying exit in %.1f second(s) so filter have time to flush internal buffers." % options.delay_exit)
-					time.sleep(options.delay_exit)
+				except OSError, e:
+					log("An exception happened while waiting for process to finish: %s" % e)
+				log("Exiting")
 				sys.exit(0)
 
 			signal.signal(signal.SIGINT, signal_handler)

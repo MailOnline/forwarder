@@ -51,10 +51,6 @@ Options:
   -r, --retry-on-network-error
                         Keep trying to reconnect instead of exiting with an
                         error.
-  -d SECONDS, --delay-exit=SECONDS
-                        Upon a SIGINT or SIGTERM, stops processing files and
-                        exit after SECONDS. This gives a chance for the filter
-                        to flushes it's buffers. Default is 0 (disabled).
 ```
 
 Example
