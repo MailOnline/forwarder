@@ -3,8 +3,6 @@
 import sys, json, os, urllib2, datetime, re, Queue, threading, time, optparse
 
 
-es_url = sys.argv[1]
-
 class ExitToken:
     pass
 exit_token = ExitToken()
@@ -19,6 +17,8 @@ parser.add_option('-m', '--message-offset OFFSET', action="store", dest="offset"
 parser.add_option('-n', '--host NAME', action="store", dest="hostname", help="Override 'host' field (defaults to %s)" % hostname, default=hostname)
 
 options, args = parser.parse_args()
+
+es_url = args[0]
 
 def to_event(event):
     try:
