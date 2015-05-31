@@ -15,6 +15,7 @@ parser = optparse.OptionParser(usage="Usage: %prog [options] <ES url>")
 
 parser.add_option('-m', '--message-offset OFFSET', action="store", dest="offset", help="Offset of first byte of message (if this byte is a space or tab, the line will be added to the previous event)", default=0, type="int")
 parser.add_option('-n', '--host NAME', action="store", dest="hostname", help="Override 'host' field (defaults to %s)" % hostname, default=hostname)
+parser.add_option('-c', '--cut', action="store_true", dest="cut", help="Discard bytes from start of line until OFFSET", default=False)
 
 options, args = parser.parse_args()
 
@@ -35,13 +36,16 @@ def to_event(event):
     data = {
         "@timestamp": timestamp,
         "host": options.hostname,
-        "message": event['line'].strip(),
+        "message": event_line(event['line'].strip()),
     }
     return json.dumps(data)
 
 
 def starts_with_space(line):
     return len(line) > options.offset and line[options.offset] in [' ', '\t']
+
+def event_line(line):
+    return line[options.offset:-1] if options.cut else line
 
 def sending():
     running = True
@@ -56,7 +60,7 @@ def sending():
             except Queue.Empty, e:
                 event = None
             if event and event != exit_token and starts_with_space(event['line']):
-                lastEvent['line'] += "\n" + event['line']
+                lastEvent['line'] += "\n" + event_line(event['line'])
             else:
                 if lastEvent:
                     payload += "{\"index\": {}}\n" + to_event(lastEvent) + "\n"
