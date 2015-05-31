@@ -45,7 +45,7 @@ def starts_with_space(line):
     return len(line) > options.offset and line[options.offset] in [' ', '\t']
 
 def event_line(line):
-    return line[options.offset:-1] if options.cut else line
+    return line[options.offset:] if options.cut else line
 
 def sending():
     running = True
