@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, json, os, urllib2, datetime, re, Queue, threading
+import sys, json, os, urllib2, datetime, re, Queue, threading, time
 
 
 es_url = sys.argv[1]
@@ -13,50 +13,69 @@ q = Queue.Queue(1000)
 
 hostname = os.popen("hostname").read().strip()
 
-def to_event(line):
+def to_event(event):
     try:
-        match = re.match(r'.*(\d\d\d\d-\d\d-\d\d[ T]\d\d:\d\d:\d\d.\d+\++\d*).*', line)
+        match = re.match(r'.*(\d\d\d\d-\d\d-\d\d[ T]\d\d:\d\d:\d\d.\d+[+-]\d\d\d\d).*', event['line'])
         if match:
             timestamp = match.group(1)
         else:
-            timestamp = datetime.datetime.now().isoformat()
+            timestamp = "%s%s%02d00" % (event['time'][0:-3], "+" if time.altzone < 0 else "-", time.altzone/60/60*-1)
     except ValueError, e:
-        timestamp = datetime.datetime.now().isoformat()
+        timestamp = event['time']
     data = {
         "timestamp": timestamp,
         "host": hostname,
-        "message": line.strip(),
+        "message": event['line'].strip(),
     }
     return json.dumps(data)
 
 
+def starts_with_space(line):
+    return line.startswith(' ') or line.startswith("\t")
+
 def sending():
     running = True
-    while running:
-        count = 1;
-        next = q.get(True)
-        if next == exit_token:
-            break;
-        payload = "{\"index\": {}}\n" + next + "\n"
-        while not q.empty() and count < 1000:
-            next = q.get()
-            if next == exit_token:
-                running = False
-                break;
-            payload += "{\"index\": {}}\n" + next + "\n"
-            count += 1
-        # print payload
-        urllib2.urlopen("%s/_bulk" % es_url, payload)
+    lastEvent = None
+    event = None
+    while event != exit_token:
+        count = 0;
+        payload = ''
+        while count < 1000 and event != exit_token and (not q.empty() or count == 0):
+            try:
+                event = q.get(True, 1)
+            except Queue.Empty, e:
+                event = None
+            if event and event != exit_token and starts_with_space(event['line']):
+                lastEvent['line'] += "\n" + event['line']
+            else:
+                if lastEvent:
+                    payload += "{\"index\": {}}\n" + to_event(lastEvent) + "\n"
+                    count += 1
+                    lastEvent = None
+                    if not event:
+                        break
+                lastEvent = event
+
+        if count > 0:
+            # print "----------------------"
+            # print payload[0:-1]
+            urllib2.urlopen("%s/_bulk" % es_url, payload)
 
 t = threading.Thread(target=sending)
 t.daemon = True
 t.start()
 
-while 1:
-    line = sys.stdin.readline()
-    if not line:
-        q.put(exit_token)
-        break
-    q.put(to_event(line))
+try:
+    while 1:
+        line = sys.stdin.readline()
+        if not line:
+            q.put(exit_token)
+            break
+        line = line[0:-1]
+        if len(line) > 0:
+            q.put({'time': datetime.datetime.now().isoformat(), 'line': line})
+        # q.put(to_event(line))
+    t.join()
+except KeyboardInterrupt, e:
+    pass
 
-t.join()
