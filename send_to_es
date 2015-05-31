@@ -19,7 +19,7 @@ def to_event(event):
         if match:
             timestamp = match.group(1)
         else:
-            timestamp = "%s%s%02d00" % (event['time'][0:-3], "+" if time.altzone < 0 else "-", time.altzone/60/60*-1)
+            timestamp = "%s%s%02d00" % (event['time'][0:-3], "+" if time.altzone <= 0 else "-", time.altzone/60/60*-1)
     except ValueError, e:
         timestamp = event['time']
     data = {
