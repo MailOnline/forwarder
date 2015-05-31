@@ -33,7 +33,7 @@ def to_event(event):
     except ValueError, e:
         timestamp = event['time']
     data = {
-        "timestamp": timestamp,
+        "@timestamp": timestamp,
         "host": options.hostname,
         "message": event['line'].strip(),
     }
