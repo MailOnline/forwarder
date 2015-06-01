@@ -73,7 +73,14 @@ def sending():
         if count > 0:
             # print "----------------------"
             # print payload[0:-1]
-            urllib2.urlopen("%s/_bulk" % es_url, payload)
+            while True:
+                try:
+                    urllib2.urlopen("%s/_bulk" % es_url, payload)
+                    break
+                except URLError, e:
+                    print >> sys.stderr, "Failed sending bulk to ES: %s" % str(e)
+                    sleep(3)
+
 
 t = threading.Thread(target=sending)
 t.daemon = True
