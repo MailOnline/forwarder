@@ -1,0 +1,104 @@
+#!/usr/bin/env python
+
+import sys, json, os, datetime, re, Queue, threading, time, optparse, base64
+from stompclient import StompClient
+
+class ExitToken:
+    pass
+exit_token = ExitToken()
+
+q = Queue.Queue(1000)
+
+hostname = os.popen("hostname").read().strip()
+
+parser = optparse.OptionParser(usage="Usage: %prog [options] <stomp host:port>")
+
+parser.add_option('-m', '--message-offset OFFSET', action="store", dest="offset", help="Offset of first byte of message (if this byte is a space or tab, the line will be added to the previous event)", default=0, type="int")
+parser.add_option('-n', '--host NAME', action="store", dest="hostname", help="Override 'host' field (defaults to %s)" % hostname, default=hostname)
+parser.add_option('-e', '--exchange NAME', action="store", dest="exchange", help="Destination exchange")
+parser.add_option('-k', '--routing-key NAME', action="store", dest="routing_key", help="Rounting key (defaults to empty string)", default="")
+parser.add_option('-v', '--virtual-host NAME', action="store", dest="vhost", help="Virtual host (defaults to '/')", default="/")
+parser.add_option('-u', '--credentials USERNAME:PASSWORD', action="store", dest="credentials", help="Username:password passed as basic auth to http request")
+
+options, args = parser.parse_args()
+
+if not options.exchange:
+    parser.error('Exchange not given')
+
+if len(args) == 0:
+    parser.error('Stomp host:port not given')
+
+
+stomp_address = args[0].split(":")
+
+stomp = StompClient(stomp_address[0], int(stomp_address[1]))
+
+cred = options.credentials.split(":")
+stomp.connect(cred[0], cred[1], options.vhost)
+
+
+def to_event(event):
+    try:
+        match = re.match(r'.*(\d\d\d\d-\d\d-\d\d[ T]\d\d:\d\d:\d\d.)(\d*)([+-]\d\d\d\d)?.*', event['line'])
+        if match:
+            timestamp = match.group(1) + match.group(2)[0:3]
+            timestamp += match.group(3) if match.group(3) else "+0000"
+            if timestamp[10] == ' ':
+                timestamp = timestamp[0:10] + 'T' + timestamp[11:]
+        else:
+            timestamp = "%s%s%02d00" % (event['time'][0:-3], "+" if time.altzone <= 0 else "-", time.altzone/60/60*-1)
+    except ValueError, e:
+        timestamp = event['time']
+    data = {
+        "@timestamp": timestamp,
+        "host": options.hostname,
+        "message": event['line'].strip(),
+    }
+    return json.dumps(data)
+
+
+def starts_with_space(line):
+    return len(line) > options.offset and line[options.offset] in [' ', '\t']
+
+def sending():
+    lastEvent = None
+    event = None
+    while event != exit_token:
+        count = 0;
+        payload = ''
+        while count < 1 and event != exit_token and (not q.empty() or count == 0):
+            try:
+                event = q.get(True, 1)
+            except Queue.Empty, e:
+                event = None
+            if event and event != exit_token and starts_with_space(event['line']):
+                lastEvent['line'] += "\n" + event['line']
+            else:
+                if lastEvent:
+                    payload += json.dumps(to_event(lastEvent))
+                    count += 1
+                    lastEvent = None
+                    if not event:
+                        break
+                lastEvent = event
+
+        if count > 0:
+            stomp.send(options.exchange, payload)
+
+t = threading.Thread(target=sending)
+t.daemon = True
+t.start()
+
+try:
+    while 1:
+        line = sys.stdin.readline()
+        if not line:
+            q.put(exit_token)
+            break
+        line = line[0:-1]
+        if len(line) > 0:
+            q.put({'time': datetime.datetime.now().isoformat(), 'line': line})
+    t.join()
+except KeyboardInterrupt, e:
+    pass
+
