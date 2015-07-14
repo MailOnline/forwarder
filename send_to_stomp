@@ -19,6 +19,7 @@ parser.add_option('-e', '--exchange NAME', action="store", dest="exchange", help
 parser.add_option('-k', '--routing-key NAME', action="store", dest="routing_key", help="Rounting key (defaults to empty string)", default="")
 parser.add_option('-v', '--virtual-host NAME', action="store", dest="vhost", help="Virtual host (defaults to '/')", default="/")
 parser.add_option('-u', '--credentials USERNAME:PASSWORD', action="store", dest="credentials", help="Username:password passed as basic auth to http request")
+parser.add_option('-c', '--cut', action="store_true", dest="cut", help="Discard bytes from start of line until OFFSET", default=False)
 
 options, args = parser.parse_args()
 
@@ -52,13 +53,16 @@ def to_event(event):
     data = {
         "@timestamp": timestamp,
         "host": options.hostname,
-        "message": event['line'].strip(),
+        "message": event_line(event['line'].strip()),
     }
     return json.dumps(data)
 
 
 def starts_with_space(line):
     return len(line) > options.offset and line[options.offset] in [' ', '\t']
+
+def event_line(line):
+    return line[options.offset:] if options.cut else line
 
 def sending():
     lastEvent = None
@@ -72,7 +76,7 @@ def sending():
             except Queue.Empty, e:
                 event = None
             if event and event != exit_token and starts_with_space(event['line']):
-                lastEvent['line'] += "\n" + event['line']
+                lastEvent['line'] += "\n" + event_line(event['line'])
             else:
                 if lastEvent:
                     payload += json.dumps(to_event(lastEvent))
