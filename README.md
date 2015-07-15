@@ -23,6 +23,8 @@ Usage: `sender`
 ---------------
 
 ```
+Usage: sender [options] <pattern0> ... <patternN>
+
 Options:
   -h, --help            show this help message and exit
   -f, --follow          Pools the file very second for changes in an infinite

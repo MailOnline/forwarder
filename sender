@@ -15,6 +15,8 @@ import threading
 import Queue
 import signal
 
+DEFAULT_SIGNAGURE_LENGTH=256
+
 filter_stopped = Queue.Queue()
 stop_signal = Queue.Queue()
 
@@ -27,13 +29,13 @@ def main():
 		"parameters and keep monitoring them for new content. "
 		"Optionally the offsets can be writen to the <offsets> file. Which "
 		"will be read when starting. "
-		"IMPORTANT: only files with size >= signature-length (default 50) bytes will be processed. "
-		"Zip files will be open recursively, and only once.")
+		"IMPORTANT: only files with size >= signature-length (default %d) bytes will be processed. "
+		"Zip files will be open recursively, and only once." % DEFAULT_SIGNAGURE_LENGTH)
 
 	parser.add_option('-f', '--follow', action="store_true", dest="follow", help="Pools the file very second for changes in an infinite loop.", default=False)
 	parser.add_option('-p', '--offsets', action="store", dest="offsets", help="File to persist the last offsets read for each file. If it doesn't exist, the files are read from beginning.", default='/dev/null')
 	parser.add_option('-t', '--tcp', action="store", dest="host", help="Sends the output to the host:port via TCP.", metavar="HOST:PORT")
-	parser.add_option('-s', '--signature-length', action="store", dest="signatureLength", help="First BYTES of the each file will be used as it's ID in offsets file, so the files can be renamed not losing the offset. Default is 50.", metavar="BYTES", default=50)
+	parser.add_option('-s', '--signature-length', action="store", dest="signatureLength", help="First BYTES of the each file will be used as it's ID in offsets file, so the files can be renamed not losing the offset. Default is %d." % DEFAULT_SIGNAGURE_LENGTH, metavar="BYTES", default=DEFAULT_SIGNAGURE_LENGTH)
 	parser.add_option('-g', '--greater-or-equal-than', action="store", dest="starting", help="Only copy lines which are >= than STARTING in lexicographical order. In lines starting with datetime, this can be used to ignore older events.")
 	parser.add_option('-e', '--start-from-the-tail', action="store_true", dest="start_from_tail", help="Generate offsets file at the tail of every file. Useful if you want to start following the end of all files returned in pattern. .. Well, ask Fabio.")
 	parser.add_option('-l', '--filter', action="store", dest="filter", help="Command or shell script that will filter the events using stdin and stdout.")
@@ -265,12 +267,12 @@ class Tail(object):
 
 	def generateSignature(self, f):
 		offset = f.tell();
-		line = f.read(self.signatureLength)
+		header = f.read(self.signatureLength)
 		f.seek(offset)
-		if len(line) == 0:
+		if len(header) == 0:
 			return None
 		else:
-			return md5.new(line).hexdigest()
+			return md5.new(header).hexdigest()
 
 	def purgeOffsetsNotIn(self, existing):
 		newOffsets = {}
