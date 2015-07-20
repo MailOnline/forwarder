@@ -16,7 +16,7 @@ parser = optparse.OptionParser(usage="Usage: %prog [options] <stomp host:port>")
 parser.add_option('-m', '--message-offset OFFSET', action="store", dest="offset", help="Offset of first byte of message (if this byte is a space or tab, the line will be added to the previous event)", default=0, type="int")
 parser.add_option('-n', '--host NAME', action="store", dest="hostname", help="Override 'host' field (defaults to %s)" % hostname, default=hostname)
 parser.add_option('-e', '--exchange NAME', action="store", dest="exchange", help="Destination exchange")
-parser.add_option('-k', '--routing-key NAME', action="store", dest="routing_key", help="Rounting key (defaults to empty string)", default="")
+parser.add_option('-k', '--routing-key NAME', action="store", dest="routing_key", help="Rounting key (defaults to empty string)", default=None)
 parser.add_option('-v', '--virtual-host NAME', action="store", dest="vhost", help="Virtual host (defaults to '/')", default="/")
 parser.add_option('-u', '--credentials USERNAME:PASSWORD', action="store", dest="credentials", help="Username:password passed as basic auth to http request")
 parser.add_option('-c', '--cut', action="store_true", dest="cut", help="Discard bytes from start of line until OFFSET", default=False)
@@ -87,7 +87,7 @@ def sending():
                 lastEvent = event
 
         if count > 0:
-            stomp.send(options.exchange, payload)
+            stomp.send(options.exchange, options.routing_key, payload)
 
 t = threading.Thread(target=sending)
 t.daemon = True

@@ -19,5 +19,10 @@ class StompClient:
     def connect(self, login, passcode, vhost):
         self.send_frame("CONNECT", {'login': login, 'passcode': passcode, 'host': vhost})
 
-    def send(self, exchange, message):
-        self.send_frame("SEND", {'destination': "/exchange/%s" % exchange}, message)
+    def send(self, exchange, routing_key, message):
+        if routing_key:
+            dest = "/exchange/%s/%s" % (exchange, routing_key)
+        else:
+            dest = "/exchange/%s" % exchange
+
+        self.send_frame("SEND", {'destination': dest}, message)
