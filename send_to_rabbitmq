@@ -41,7 +41,7 @@ uri = "%s/api/exchanges/%s/%s/publish" % (rabbitmq_url, encoded_vhost, encoded_e
 
 def to_event(event):
     try:
-        match = re.match(r'.*(\d\d\d\d-\d\d-\d\d[ T]\d\d:\d\d:\d\d.)(\d*)([+-]\d\d\d\d)?.*', event['line'])
+        match = re.match(r'(\d\d\d\d-\d\d-\d\d[ T]\d\d:\d\d:\d\d[.,])(\d*)([+-]\d\d\d\d)?.*', event['line'])
         if match:
             timestamp = match.group(1) + match.group(2)[0:3]
             timestamp += match.group(3) if match.group(3) else "+0000"
