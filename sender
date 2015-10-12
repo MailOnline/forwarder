@@ -8,12 +8,14 @@ import socket
 import optparse
 import md5
 import zipfile
+import gzip
 import tempfile
 import shutil
 import subprocess
 import threading
 import Queue
 import signal
+import traceback
 
 DEFAULT_SIGNAGURE_LENGTH=256
 
@@ -124,6 +126,12 @@ def log(msg):
 	sys.stderr.write(str(msg))
 	sys.stderr.write("\n")
 	sys.stderr.flush()
+
+def debug(msg):
+	# sys.stderr.write(str(msg))
+	# sys.stderr.write("\n")
+	# sys.stderr.flush()
+	pass
 
 
 class Stdout(object):
@@ -316,48 +324,67 @@ class Tail(object):
 
 
 	def processCompressedFile(self, f, fn):
-		path = tempfile.mkdtemp()
-		for name in self.unzip(path, f, fn):
-			self.processFile('%s/%s' % (path, name), {})
-		shutil.rmtree(path)
+		if fn.endswith('.gz'):
+			self.processGzipFile(fn)
+		else:
+			self.processZipFile(f, fn)
 
-
-	def processFile(self, fn, existing):
-		f = open(fn, 'rb')
+	def processGzipFile(self, fn):
+		debug("gz: %s" % fn)
+		f = gzip.open(fn)
 		try:
-			sig = self.generateSignature(f)
-			if not sig:
-				return
-
-			if sig in existing and os.path.getsize(fn) != os.path.getsize(existing[sig]):
-				log("WARN Files '%s' and '%s' have same signature and different sizes" % (fn, existing[sig]))
-
-			info = self.offsets.get(sig, Info(sig=sig, name=fn))
-
-			lastOffset = info.offset
-
-			info.name = fn
-
-			if self.isCompressed(fn):
-				if info.offset == 0:
-					if not self.start_from_tail:
-						self.processCompressedFile(f, fn)
-					info.offset = -1					
-			else:
-				if self.start_from_tail:
-					info.offsets = os.path.getsize(fn)
-				f.seek(info.offset)
-				self.copy(f)
-				info.offset = f.tell()
-
-			existing[sig] = fn
-			
-			if lastOffset != info.offset:
-				self.offsets[sig] = info
-				self.persistOffsets()
-
+			self.processFile(f, '/var/tmp/fake.log', {})
 		finally:
 			f.close()
+
+	def processZipFile(self, f, fn):
+		path = tempfile.mkdtemp()
+		for name in self.unzip(path, f, fn):
+			self.processFileByName('%s/%s' % (path, name), {})
+		shutil.rmtree(path)
+
+	def processFileByName(self, fn, existing):
+		debug("processFileByName: %s" % fn)
+		f = open(fn, 'rb')
+		try:
+			self.processFile(f, fn, existing)
+		finally:
+			f.close()
+			
+	def processFile(self, f, fn, existing):
+		debug("processFile: %s" % fn)
+		sig = self.generateSignature(f)
+		if not sig:
+			return
+	
+		if sig in existing and os.path.getsize(fn) != os.path.getsize(existing[sig]):
+			log("WARN Files '%s' and '%s' have same signature and different sizes" % (fn, existing[sig]))
+	
+		info = self.offsets.get(sig, Info(sig=sig, name=fn))
+	
+		lastOffset = info.offset
+	
+		info.name = fn
+	
+		if self.isCompressed(fn):
+			debug("compressed: %s" % fn)
+			if info.offset == 0:
+				if not self.start_from_tail:
+					self.processCompressedFile(f, fn)
+				info.offset = -1
+		else:
+			if self.start_from_tail:
+				info.offsets = os.path.getsize(fn)
+			f.seek(info.offset)
+			self.copy(f)
+			info.offset = f.tell()
+	
+		existing[sig] = fn
+	
+		if lastOffset != info.offset:
+			self.offsets[sig] = info
+			self.persistOffsets()
+
 
 	def run(self):
 		while True:
@@ -370,11 +397,15 @@ class Tail(object):
 						if not os.path.isfile(fn):
 							log("File no longer exists: %s" % fn)
 							continue
-						if os.path.getsize(fn) < self.signatureLength:
+						if os.path.getsize(fn) < self.signatureLength and not self.isCompressed(fn):
 							continue
-						self.processFile(fn, existing)
+						self.processFileByName(fn, existing)
 					except Exception, e:
 						log("Exception: %s" % e)
+						exc_type, exc_value, exc_traceback = sys.exc_info()
+						traceback.print_tb(exc_traceback)
+
+
 			if len(existing) != len(self.offsets):
 				self.purgeOffsetsNotIn(existing)
 			if not self.follow:
