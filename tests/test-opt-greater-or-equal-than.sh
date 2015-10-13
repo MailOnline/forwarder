@@ -6,6 +6,6 @@ log_random >> myapp.log
 log_random >> myapp.log
 
 assert "sender -g '$ts' 'myapp.*' | count_lines" 3
-assert "sender --greater-or-equal-than '$ts' -o offsets 'myapp.*' | count_lines" 3
-assert "sender --greater-or-equal-than '$ts' -o offsets 'myapp.*' | count_lines" 0
-assert "sender -o offsets 'myapp.*' | count_lines" 0
+assert "sender --greater-or-equal-than '$ts' -p offsets 'myapp.*' | count_lines" 3
+assert "sender --greater-or-equal-than '$ts' -p offsets 'myapp.*' | count_lines" 0
+assert "sender -p offsets 'myapp.*' | count_lines" 0
