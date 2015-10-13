@@ -3,7 +3,11 @@
 import sys
 import os
 import subprocess
+import signal
 
 # os.setpgrp()
 p = subprocess.Popen(['bash', '-c', sys.argv[1]])
-p.wait()
+try:
+	p.wait()
+except KeyboardInterrupt:
+	os.kill(p.pid, signal.SIGINT)
