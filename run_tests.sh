@@ -4,21 +4,46 @@
 
 set -e
 
-base=$(dirname $0)/tests
+base=$(cd $(dirname $0) && pwd -P)
 
-. $base/assert.sh
+. $base/tests/assert.sh -v -i
 
-sender=$base/../sender
+function log_random() {
+	now=$(date +"%Y-%M-%d %T")
+	uuid=$( ( uuidgen || python  -c 'import uuid; print uuid.uuid1(), "(from python)"' ) 2>/dev/null )
+	echo $uuid > .last_uuid
+	echo "$now And this is a UUID just to ensure this line is unique: $uuid"
+}
+
+function last_uuid() {
+	cat .last_uuid
+}
+
+function count_bytes() {
+	echo $(cat $1 | wc -c | xargs)
+}
+
+function count_lines() {
+	echo $(cat $1 | wc -l | xargs)
+}
+
 workdir=$(mktemp -d -t forwarder-tests)
 trap "[ -d $workdir ] && echo Tests failed, so not cleaning workdir: $workdir" EXIT
 
-assert_raises "$sender | grep Usage: &> /dev/null"
+export PATH=$base:$PATH
 
-for test in $(find tests -name 'test*.sh'); do 
-	cd $(dirname $test)
-	. $(basename $test)
-	cd --
-done
+function run_tests() {
+	current_dir=$pwd
+	for test in $(find tests -name 'test*.sh'); do 
+		mkdir -p $workdir/$test
+		cd $workdir/$test
+		. $base/$test
+	done
+	cd $pwd
 
-assert_end forwarder 
+	assert_end forwarder 
+}
+
+run_tests
+
 [ $tests_suite_status == 0 ] && rm -rf $workdir
