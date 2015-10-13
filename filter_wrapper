@@ -4,6 +4,6 @@ import sys
 import os
 import subprocess
 
-os.setpgrp()
+# os.setpgrp()
 p = subprocess.Popen(['bash', '-c', sys.argv[1]])
 p.wait()
