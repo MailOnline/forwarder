@@ -1,12 +1,7 @@
 #!/bin/bash
 
 # this script runs all tests/test*.sh files using assert.sh (https://github.com/lehmannro/assert.sh)
-
-set -e
-
-base=$(cd $(dirname $0) && pwd -P)
-
-. $base/tests/assert.sh -v -i
+# and the helper functions bellow
 
 function log_random() {
 	now=$(date +"%Y-%M-%d %T")
@@ -26,6 +21,12 @@ function count_bytes() {
 function count_lines() {
 	echo $(cat $1 | wc -l | xargs)
 }
+
+set -e
+
+base=$(cd $(dirname $0) && pwd -P)
+
+. $base/tests/assert.sh -v -i
 
 workdir=$(mktemp -d -t forwarder-tests)
 trap "[ -d $workdir ] && echo Tests failed, so not cleaning workdir: $workdir" EXIT
