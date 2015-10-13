@@ -3,6 +3,7 @@
 import sys
 import time
 import os.path
+import os
 import glob
 import socket
 import optparse
@@ -21,6 +22,7 @@ DEFAULT_SIGNAGURE_LENGTH=256
 
 filter_stopped = Queue.Queue()
 stop_signal = Queue.Queue()
+running_lock = threading.Lock()
 
 def should_stop():
 	return not stop_signal.empty()
@@ -98,26 +100,43 @@ def main():
 
 			signal_names = dict((k, v) for v, k in reversed(sorted(signal.__dict__.items()))
  				if v.startswith('SIG') and not v.startswith('SIG_'))
-			def signal_handler(signal, frame):
-				log("%s caught" % signal_names[signal])
-				log("Stop processing files")
-				stop_signal.put(True)
-				time.sleep(0.2)
-				log("Closing filter")
-				filter.stdin.close()
-				log("Waiting for filter to finish")
+
+			def close_filter(sig=signal.SIGINT):
+				if not filter.stdin.closed:
+					filter.stdin.close()
 				try:
-					filter.wait()
+					count = 0
+					while filter.poll() is None:
+						time.sleep(0.05)
+						count += 1
+						if count == 8:
+							log("Filter is taking some time to exit. Waiting a bit.")
+						if count > 40:
+							log("That does it. Sending SIGINT.")
+							os.kill(filter.pid, sig)
+							break
+					sys.exit(0)
 				except OSError, e:
 					log("An exception happened while waiting for process to finish: %s" % e)
-				log("Exiting")
-				sys.exit(0)
+
+
+			def signal_handler(signal, frame):
+				log("%s caught" % signal_names[signal])
+				stop_signal.put(True)
+				if not filter.stdin.closed:
+					running_lock.acquire(True)
+				close_filter(signal)
 
 			signal.signal(signal.SIGINT, signal_handler)
 			signal.signal(signal.SIGTERM, signal_handler)
 
 		try:
 			Tail(options, args, output).run()
+
+			if options.filter:
+				close_filter()
+
+
 		except KeyboardInterrupt:
 			pass
 
@@ -387,30 +406,34 @@ class Tail(object):
 
 
 	def run(self):
-		while True:
-			if not filter_stopped.empty():
-				sys.exit(1)
-			existing = {}
-			for fnpattern in self.fnpatterns:
-				for fn in glob.glob(fnpattern):
-					try:
-						if not os.path.isfile(fn):
-							log("File no longer exists: %s" % fn)
-							continue
-						if os.path.getsize(fn) < self.signatureLength and not self.isCompressed(fn):
-							continue
-						self.processFileByName(fn, existing)
-					except Exception, e:
-						log("Exception: %s" % e)
-						exc_type, exc_value, exc_traceback = sys.exc_info()
-						traceback.print_tb(exc_traceback)
+		running_lock.acquire(True)
+		try:
+			while not should_stop():
+				if not filter_stopped.empty():
+					sys.exit(1)
+				existing = {}
+				for fnpattern in self.fnpatterns:
+					for fn in glob.glob(fnpattern):
+						try:
+							if not os.path.isfile(fn):
+								log("File no longer exists: %s" % fn)
+								continue
+							if os.path.getsize(fn) < self.signatureLength and not self.isCompressed(fn):
+								continue
+							self.processFileByName(fn, existing)
+						except Exception, e:
+							log("Exception: %s" % e)
+							exc_type, exc_value, exc_traceback = sys.exc_info()
+							traceback.print_tb(exc_traceback)
 
 
-			if len(existing) != len(self.offsets):
-				self.purgeOffsetsNotIn(existing)
-			if not self.follow:
-				break
-			time.sleep(1)
+				if len(existing) != len(self.offsets):
+					self.purgeOffsetsNotIn(existing)
+				if not self.follow:
+					break
+				time.sleep(1)
+		finally:
+			running_lock.release()
 
 					
 
