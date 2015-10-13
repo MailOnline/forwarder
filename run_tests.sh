@@ -7,11 +7,16 @@ function log_random() {
 	now=$(date +"%Y-%M-%d %T")
 	uuid=$( ( uuidgen || python  -c 'import uuid; print uuid.uuid1(), "(from python)"' ) 2>/dev/null )
 	echo $uuid > .last_uuid
+	echo $now > .last_timestamp
 	echo "$now And this is a UUID just to ensure this line is unique: $uuid"
 }
 
 function last_uuid() {
 	cat .last_uuid
+}
+
+function last_timestamp() {
+	cat .last_timestamp
 }
 
 function count_bytes() {
