@@ -27,6 +27,8 @@ function count_lines() {
 	echo $(cat $1 | wc -l | xargs)
 }
 
+persistent=$([ "$1" == "-p" ] && echo 1 || echo 0)
+
 set -e
 
 base=$(cd $(dirname $0) && pwd -P)
@@ -34,7 +36,21 @@ base=$(cd $(dirname $0) && pwd -P)
 . $base/tests/assert.sh -v -i
 
 workdir=$(mktemp -d -t forwarder-tests)
-trap "[ -d $workdir ] && echo Tests failed, so not cleaning workdir: $workdir" EXIT
+
+function _cleanup() {
+	if [ $persistent == 1 ]; then
+		 echo "Leaving working dir intact: $workdir"
+		 exit $tests_suite_status
+	fi
+
+	rm -rf $workdir
+	if ! [ $tests_suite_status == 0 ]; then
+		echo "Tests failed, execute this script with -p option to leave working directory intact"
+	fi
+	exit $tests_suite_status
+}
+
+trap '_cleanup' EXIT
 
 export PATH=$base:$PATH
 
@@ -52,4 +68,3 @@ function run_tests() {
 
 run_tests
 
-[ $tests_suite_status == 0 ] && rm -rf $workdir
