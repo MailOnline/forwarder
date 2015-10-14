@@ -38,6 +38,7 @@ base=$(cd $(dirname $0) && pwd -P)
 workdir=$(mktemp -d -t forwarder-tests-XXXXXX)
 
 function _cleanup() {
+	local status=$?
 	if [ $persistent == 1 ]; then
 		 echo "Leaving working dir intact: $workdir"
 		 exit $tests_suite_status
@@ -47,7 +48,8 @@ function _cleanup() {
 	if ! [ $tests_suite_status == 0 ]; then
 		echo "Tests failed, execute this script with -p option to leave working directory intact"
 	fi
-	exit $tests_suite_status
+	[ $status = "0" ] && exit $tests_suite_status
+	exit $status
 }
 
 trap '_cleanup' EXIT
