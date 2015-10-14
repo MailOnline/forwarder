@@ -5,7 +5,7 @@
 
 function log_random() {
 	now=$(gdate +"%Y-%M-%dT%T.%N" 2>/dev/null || date +"%Y-%M-%dT%T.%N")
-	uuid=$( ( uuidgen 2>/dev/null || python  -c 'import uuid; print uuid.uuid1(), "(from python)"' ) 2>/dev/null )
+	uuid=$( ( uuidgen 2>/dev/null || python  -c 'import uuid; print uuid.uuid1()' ) 2>/dev/null )
 	echo $uuid > .last_uuid
 	echo $now > .last_timestamp
 	echo "$now And this is a UUID just to ensure this line is unique: $uuid"
