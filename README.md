@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/MailOnline/forwarder.svg?branch=master)](https://travis-ci.org/MailOnline/forwarder)
+
 forwarder
 =========
 
