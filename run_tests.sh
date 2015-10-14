@@ -57,13 +57,13 @@ trap '_cleanup' EXIT
 export PATH=$base:$PATH
 
 function run_tests() {
-	current_dir=$pwd
+	current_dir=$(pwd)
 	for test in $(find tests -name 'test*.sh'); do 
 		mkdir -p $workdir/$test
 		cd $workdir/$test
 		. $base/$test
 	done
-	cd $pwd
+	cd $current_dir
 
 	assert_end forwarder 
 }
