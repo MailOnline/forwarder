@@ -1,4 +1,5 @@
 for i in {1..10}; do log_random >> myapp.log; done
+nc --version
 
 netcat -l -p 19501 > received.log &
 server_pid=$!
