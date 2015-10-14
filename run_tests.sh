@@ -35,7 +35,7 @@ base=$(cd $(dirname $0) && pwd -P)
 
 . $base/tests/assert.sh -v -i
 
-workdir=$(mktemp -d -t forwarder-tests)
+workdir=$(mktemp -d -t forwarder-tests-XXXXXX)
 
 function _cleanup() {
 	if [ $persistent == 1 ]; then
