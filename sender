@@ -369,22 +369,22 @@ class Tail(object):
 			self.processFile(f, fn, existing)
 		finally:
 			f.close()
-			
+
 	def processFile(self, f, fn, existing):
 		debug("processFile: %s" % fn)
 		sig = self.generateSignature(f)
 		if not sig:
 			return
-	
+
 		if sig in existing and os.path.getsize(fn) != os.path.getsize(existing[sig]):
 			log("WARN Files '%s' and '%s' have same signature and different sizes" % (fn, existing[sig]))
-	
+
 		info = self.offsets.get(sig, Info(sig=sig, name=fn))
-	
+
 		lastOffset = info.offset
-	
+
 		info.name = fn
-	
+
 		if self.isCompressed(fn):
 			debug("compressed: %s" % fn)
 			if info.offset == 0:
@@ -394,12 +394,16 @@ class Tail(object):
 		else:
 			if self.start_from_tail:
 				info.offsets = os.path.getsize(fn)
-			f.seek(info.offset)
-			self.copy(f)
-			info.offset = f.tell()
-	
+			if os.path.getsize(fn) < info.offset:
+                                log("WARN file %s was truncated" % fn)
+                                info.offset = os.path.getsize(fn)
+                        else:
+                                f.seek(info.offset)
+                                self.copy(f)
+                                info.offset = f.tell()
+
 		existing[sig] = fn
-	
+
 		if lastOffset != info.offset:
 			self.offsets[sig] = info
 			self.persistOffsets()
@@ -435,10 +439,9 @@ class Tail(object):
 		finally:
 			running_lock.release()
 
-					
+
 
 if __name__ == '__main__':
 	main()
 
 #import pdb ; pdb.set_trace()
-
