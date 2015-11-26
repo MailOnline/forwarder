@@ -10,4 +10,4 @@ log_random >> myapp.log.1
 
 mv myapp.log.1 myapp.log.2
 
-assert "sender -p offsets 'myapp.*' | count_lines" 1
+assert "sender -p offsets 'myapp.*' | count_lines" 0
