@@ -62,10 +62,10 @@ function run_tests() {
 		mkdir -p $workdir/$test
 		cd $workdir/$test
 		. $base/$test
+		assert_end $test
 	done
 	cd $current_dir
 
-	assert_end forwarder 
 }
 
 run_tests
