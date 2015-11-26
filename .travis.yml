@@ -8,3 +8,5 @@ notifications:
   email:
     recipients:
       - fabioroger@gmail.com
+
+sudo: false
