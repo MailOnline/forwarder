@@ -3,3 +3,8 @@ sudo: false
 
 script:
   - bash run_tests.sh
+
+notifications:
+  email:
+    recipients:
+      - fabioroger@gmail.com
