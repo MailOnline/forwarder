@@ -1,10 +1,6 @@
 for i in {1..10}; do log_random >> myapp.log; done
 
-if [ `uname` = "Darwin" ]; then
-	nc -l -p 19501 > received.log & 
-else 
-	nc -l 19501 > received.log &
-fi
+nc -l -p 19501 2>/dev/null > received.log || nc -l 19501 > received.log 2>/dev/null & 
 
 server_pid=$!
 
