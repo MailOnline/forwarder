@@ -394,13 +394,13 @@ class Tail(object):
 		else:
 			if self.start_from_tail:
 				info.offsets = os.path.getsize(fn)
-			if os.path.getsize(fn) < info.offset:
-                                log("WARN file %s was truncated" % fn)
-                                info.offset = os.path.getsize(fn)
-                        else:
-                                f.seek(info.offset)
-                                self.copy(f)
-                                info.offset = f.tell()
+			if os.path.exists(fn) and os.path.getsize(fn) < info.offset:
+				log("WARN file %s was truncated" % fn)
+				info.offset = os.path.getsize(fn)
+			else:
+				f.seek(info.offset)
+				self.copy(f)
+				info.offset = f.tell()
 
 		existing[sig] = fn
 
