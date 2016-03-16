@@ -115,7 +115,6 @@ def main():
 							log("That does it. Sending SIGINT.")
 							os.kill(filter.pid, sig)
 							break
-					sys.exit(0)
 				except OSError, e:
 					log("An exception happened while waiting for process to finish: %s" % e)
 
