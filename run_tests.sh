@@ -58,9 +58,10 @@ export PATH=$base:$PATH
 
 function run_tests() {
 	current_dir=$(pwd)
-	for test in $(find tests -name 'test*.sh'); do 
+	for test in $(find tests -name 'test*.sh' | sort); do 
 		mkdir -p $workdir/$test
 		cd $workdir/$test
+		echo Running tests/$test ...
 		. $base/$test
 		assert_end $test
 	done
