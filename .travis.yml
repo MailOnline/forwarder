@@ -1,5 +1,11 @@
 language: bash
 sudo: false
+os:
+  - linux
+  - osx
+
+before install:
+  - [[ "$TRAVIS_OS_NAME" == "osx" ]] && brew update && brew install coreutils
 
 script:
   - bash run_tests.sh
@@ -8,5 +14,3 @@ notifications:
   email:
     recipients:
       - fabioroger@gmail.com
-
-sudo: false
