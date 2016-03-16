@@ -125,6 +125,7 @@ def main():
 				stop_signal.put(True)
 				if not filter.stdin.closed:
 					running_lock.acquire(True)
+				time.sleep(0.1)
 				close_filter(signal)
 
 			signal.signal(signal.SIGINT, signal_handler)
