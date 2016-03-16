@@ -140,6 +140,12 @@ def main():
 		except KeyboardInterrupt:
 			pass
 
+def dump_all_threads_stack_trace():
+	for th in threading.enumerate():
+		print(th)
+		traceback.print_stack(sys._current_frames()[th.ident])
+		print()
+
 
 def log(msg):
 	sys.stderr.write(str(msg))
