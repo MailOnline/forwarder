@@ -1,3 +1,5 @@
+zip --version &> /dev/null || echo zip utility not found, please install it before running tests
+
 for i in {1..10}; do log_random >> myapp.log; done
 
 assert "sender -p offsets 'myapp.*' | count_lines" 10
