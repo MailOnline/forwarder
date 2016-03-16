@@ -87,6 +87,7 @@ def main():
 						break
 					except:
 						log("Some exception happened. Exiting.")
+				        stop_signal.put(True)
 						break
 				filter_stopped.put(True)
 
