@@ -5,7 +5,7 @@ os:
   - osx
 
 before_install:
-  - '[[ "$TRAVIS_OS_NAME" == "osx" ]] && brew update && brew install coreutils'
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update; brew install coreutils; fi
 
 script:
   - bash run_tests.sh
