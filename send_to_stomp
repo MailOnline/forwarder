@@ -2,6 +2,7 @@
 from __future__ import print_function
 
 import sys, json, os, datetime, re, Queue, threading, time, optparse, base64
+from select import select
 from stompclient import StompClient
 import sys
 
@@ -22,6 +23,7 @@ parser.add_option('-k', '--routing-key NAME', action="store", dest="routing_key"
 parser.add_option('-v', '--virtual-host NAME', action="store", dest="vhost", help="Virtual host (defaults to '/')", default="/")
 parser.add_option('-u', '--credentials USERNAME:PASSWORD', action="store", dest="credentials", help="Username:password passed as basic auth to http request")
 parser.add_option('-c', '--cut', action="store_true", dest="cut", help="Discard bytes from start of line until OFFSET", default=False)
+parser.add_option('-b', '--heartbeat INTERVAL', action="store", dest="heartbeat", help="Interval in seconds to output a heartbeat to stderr", default=60, type="int")
 
 options, args = parser.parse_args()
 
@@ -111,13 +113,19 @@ t.start()
 
 try:
     while 1:
-        line = sys.stdin.readline()
-        if not line:
-            q.put(exit_token)
-            break
-        line = line[0:-1]
-        if len(line) > 0:
-            q.put({'time': datetime.datetime.now().isoformat(), 'line': line})
+        rlist, _, _ = select([sys.stdin], [], [], options.heartbeat)
+        if rlist:
+            line = sys.stdin.readline()
+            if not line:
+                q.put(exit_token)
+                break
+            line = line[0:-1]
+            if len(line) > 0:
+                q.put({'time': datetime.datetime.now().isoformat(), 'line': line})
+        else:
+            log('heartbeat', {})
+
+
     t.join()
 except KeyboardInterrupt, e:
     pass
