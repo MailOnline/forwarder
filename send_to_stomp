@@ -36,7 +36,7 @@ if len(args) == 0:
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
-def log(name, props):
+def log_json(name, props={}):
     a = {
         'timestamp': datetime.datetime.now().isoformat(),
         'ns': 'forwarder.stomp',
@@ -47,7 +47,7 @@ def log(name, props):
     eprint(json.dumps(z))
 
 
-log('starting', dict([(property, value) for property, value in vars(options).iteritems()]))
+log_json('starting', dict([(property, value) for property, value in vars(options).iteritems()]))
 
 stomp_address = args[0].split(":")
 
@@ -126,7 +126,7 @@ try:
 
         now = time.time();
         if now - last_heartbeat >= options.heartbeat:
-            log2splunk('heartbeat')
+            log_json('heartbeat')
             last_heartbeat += options.heartbeat
 
 
