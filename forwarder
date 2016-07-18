@@ -10,7 +10,7 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 
-def readConfigFrom(dir, config=ConfigParser.RawConfigParser()):
+def readConfigFrom(dir, config=ConfigParser.SafeConfigParser()):
 	for root, subdirs, files in os.walk(dir):
 		for file in files:
 			eprint("Reading config from file %s" % os.path.join(root, file))
@@ -38,7 +38,6 @@ def main():
 			value = config.get(section, option)
 			print ("%s.%s = %s" % (section, option, value))
 
-	# print ["%s = %s" % (option, config.get('app', option)) for option in config.options('app')]
 
 if __name__ == '__main__':
 	main()
