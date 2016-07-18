@@ -1,7 +1,9 @@
 #!/usr/bin/env python
+from __future__ import print_function
 
 import sys, json, os, datetime, re, Queue, threading, time, optparse, base64
 from stompclient import StompClient
+import sys
 
 class ExitToken:
     pass
@@ -29,6 +31,9 @@ if not options.exchange:
 if len(args) == 0:
     parser.error('Stomp host:port not given')
 
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
+
 def log(name, props):
     a = {
         'timestamp': datetime.datetime.now().isoformat(),
@@ -37,7 +42,7 @@ def log(name, props):
     }
     z = props.copy()
     z.update(a)
-    print json.dumps(z)
+    eprint(json.dumps(z))
 
 
 log('starting', dict([(property, value) for property, value in vars(options).iteritems()]))
