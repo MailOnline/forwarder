@@ -40,6 +40,7 @@ def log_json(name, props={}):
     a = {
         'timestamp': datetime.datetime.now().isoformat(),
         'ns': 'forwarder.stomp',
+        'hostname': hostname,
         'name': name
     }
     z = props.copy()
