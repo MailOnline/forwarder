@@ -29,6 +29,18 @@ if not options.exchange:
 if len(args) == 0:
     parser.error('Stomp host:port not given')
 
+def log(name, props):
+    a = {
+        'timestamp': datetime.datetime.now().isoformat(),
+        'ns': 'forwarder.stomp',
+        'name': name
+    }
+    z = props.copy()
+    z.update(a)
+    print json.dumps(z)
+
+
+log('starting', dict([(property, value) for property, value in vars(options).iteritems()]))
 
 stomp_address = args[0].split(":")
 
