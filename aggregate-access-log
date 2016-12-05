@@ -1,0 +1,217 @@
+#!/usr/bin/env awk -f
+
+function top_array(result, top, acc) {
+    delete temp
+    c = 0
+    for(i in acc) {
+        temp[c] = sprintf("%05d %s", acc[i], i)
+        c += 1
+    }
+
+    n = asort(temp)
+    startfrom = n < top ? 0 : n-top
+
+
+    ai=0
+    for(i = startfrom+1;i<=n;i++) {
+        line = temp[i]
+        count = substr(line, 1, 6)+0
+        value = substr(line, 7, length(line)-1)
+        result[ai][1] = count
+        result[ai][2] = value
+        ai += 1
+    }
+}
+
+
+function print_ua(ts, acc) {
+    top_array(tops, 15, acc)
+
+    for (i in tops) {
+        ua = tops[i][2]
+        gsub("\"", "'", ua)
+        printf "%s ns=fe.access.ua count=%d ua=\"%s\"\n", ts, tops[i][1], ua
+
+    }
+
+    delete tops
+}
+
+function print_errors(ts, acc) {
+
+    top_array(tops, 15, acc)
+
+    for (i in tops) {
+        value = tops[i][2]
+        split(value, values, " ")
+        code = values[1]+0
+        uri = values[2]
+        printf "%s ns=fe.access.errors count=%d error=%d uri=\"%s\"\n", ts, tops[i][1], code, uri
+
+    }
+
+    delete tops
+}
+
+function print_reqs(ts, acc) {
+
+    top_array(tops, 15, acc["uri_time"])
+
+    for (i in tops) {
+        value = tops[i][2]
+        # total = acc["uri_time"][value]
+        # count = tops[i][1]
+
+        total = tops[i][1]
+        count = acc["reqs"][value]
+
+        split(value, values, " ")
+        code = values[1]+0
+        uri = values[2]
+        printf "%s ns=fe.access.slow count=%d total=%d code=%d uri=\"%s\"\n", ts, count, total, code, uri
+
+    }
+
+    delete tops
+
+
+    top_array(tops, 15, acc["reqs"])
+
+    for (i in tops) {
+        value = tops[i][2]
+        total = acc["uri_time"][value]
+        count = tops[i][1]
+
+        split(value, values, " ")
+        code = values[1]+0
+        uri = values[2]
+        printf "%s ns=fe.access.count count=%d total=%d code=%d uri=\"%s\"\n", ts, count, total, code, uri
+
+    }
+
+    delete tops
+}
+
+
+function print_groups(ts, acc) {
+    for (i in acc["times"]) {
+        printf "%s ns=fe.access.group group_name=\"%s\" count=%d avg=%.1f max=%d min=%d\n", ts, i, acc["count"][i], acc["times"][i]/acc["count"][i], acc["max"][i], acc["min"][i]
+    }
+}
+
+function print_codes(ts, acc) {
+    for (i in acc["code"]) {
+        printf "%s ns=fe.access.bots response_code=%s count=%d bots=%d\n", ts, i, acc["code"][i], acc["bots"][i]
+    }
+}
+
+function print_acc(ts, acc) {
+
+    # in case we lose the next few bytes if network connection is lost, we just lose empty lines
+    for (i = 1; i <= 10; i++) {
+        printf "%s\n", ts
+    }
+
+    if (length(acc["ua"]) > 0) { print_ua(ts, acc["ua"]) }
+    print_groups(ts, acc)
+    print_codes(ts, acc)
+    if (length(acc["errors"]) > 0) { print_errors(ts, acc["errors"]) }
+    if (length(acc["reqs"]) > 0) { print_reqs(ts, acc) }
+
+
+    print ts > "/dev/stderr"
+    fflush(stdout)
+}
+
+{
+
+    ts = sprintf("%s%s", substr($4, 2, 19), substr($4, 25, 5))
+    current_minute = substr(ts, 1, 16)
+
+    if (current_minute != last_minute) {
+
+        if (length(first_timestamp)>0) {
+
+            print_acc(first_timestamp, acc)
+        }
+
+        first_timestamp = ts
+        last_minute = current_minute;
+        delete acc
+    }
+
+    url = $6
+
+    if (gsub("^/textbased/.*", "textbased", url) ||
+	gsub(".*article-[0-9]*/amp/.*", "amp/articles", url) ||
+        gsub(".*article-[0-9]*/.*mobile=true.*", "mobile/articles", url) ||
+        gsub(".*article-[0-9]*/.*", "articles", url) ||
+        gsub(".*video-[0-9]*/.*mobile=true.*", "mobile/video", url) ||
+        gsub(".*video-[0-9]*/.*", "video", url) ||
+        gsub(".*columnist-[0-9]*/.*mobile=true.*", "mobile/columnist", url) ||
+        gsub(".*columnist-[0-9]*/.*", "columnist", url) ||
+        gsub(".*/(home|homeus|homeau)/index.html.*mobile=true.*", "mobile/home", url) ||
+        gsub(".*/(home|homeus|homeau)/index.html.*", "home", url) ||
+        gsub(".*index.html.*mobile=true.*", "mobile/channels", url) ||
+        gsub(".*index.html.*", "channels", url) ||
+        gsub(".*rss.*", "rss", url) ||
+        gsub(".*registration.*", "registration", url) ||
+        gsub(".*meta.*", "meta", url) ||
+        gsub(".*/geolocation/.*", "esi calls", url) ||
+        gsub(".*/mobile/.*", "mobile feed", url) ||
+        gsub(".*/api/.*", "api", url) ||
+        gsub(".*/home/search.html.*", "search", url) ||
+        gsub(".*/home/sitemap.*.html.*", "sitemap/html", url) ||
+        gsub(".*sitemap.*.xml.*", "sitemap/xml", url) ||
+        gsub(".*embed/video/.*", "embedded video", url) ||
+        gsub(".*videoarchive.*", "video archive", url) ||
+        gsub(".*c.*/item.cms.*", "cms items", url) ||
+        gsub(".*/.*.html.*", "topic pages", url) ||
+        gsub("^/$", "home", url) ||
+        gsub("^/.*$", "others", url))
+    {}
+
+    acc["code"][$8] +=1
+
+
+    response_time = $10+0
+    acc["count"][url] += 1
+    acc["size"][url] += $9
+    acc["times"][url] += response_time
+    if (length(acc["min"][url]) == 0 || acc["min"][url] > response_time) {
+        acc["min"][url] = response_time
+    }
+    if (acc["max"][url] < response_time) {
+        acc["max"][url] = response_time
+    }
+
+    a=""
+    for (i=12;i<=NF;i++) {
+        a=a " " $i
+    }
+    ua = substr(a,3,length(a)-3)
+    acc["ua"][ua] += 1
+    IGNORECASE = 1
+    if (match(ua, /bot|google|crawler|spider|robot|crawling|wget|http|slurp|analyzer|sitecon|@/) || ua == "-") {
+        acc["bots"][$8] += 1
+    }
+
+    code = $8+0
+    uri = $6
+    gsub("\\?.*", "", uri)
+    code_uri = sprintf("%03d %s", code, uri)
+    acc["reqs"][code_uri] += 1
+    acc["uri_time"][code_uri] += response_time
+
+    if (code >= 400) {
+        acc["errors"][code_uri] += 1
+    }
+
+
+
+
+}
+END {
+    print_acc(first_timestamp, acc)
+
+}
