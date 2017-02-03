@@ -274,6 +274,7 @@ class Tail(object):
 		self.starting = options.starting
 		self.start_from_tail = options.start_from_tail
 		self.readOffsets()
+		self.duplicates = {}
 
 
 	def persistOffsets(self):
@@ -429,6 +430,7 @@ class Tail(object):
 				if not filter_stopped.empty():
 					sys.exit(1)
 				existing = {}
+				to_process = {}
 				filehandles = {}
 				for fnpattern in self.fnpatterns:
 					for fn in glob.glob(fnpattern):
@@ -443,13 +445,18 @@ class Tail(object):
 							f = open(fn, 'rb')
 							sig = self.generateSignature(f)
 							debug("Sig for fn %s is %s" % (fn, sig))
+							sig_fn = sig+fn;
 							if sig in existing:
-								log("METRIC ns=forwarder.duplicatesig file=%s sig=%s" % (fn, sig))
-								del existing[sig]
+								if not sig_fn in self.duplicates:
+									log("METRIC ns=forwarder.duplicatesig file=%s dupe_of=%s sig=%s" % (fn, existing[sig], sig))
+									self.duplicates[sig_fn] = True;
+								if sig in to_process: #take original duplicate out of to_process
+									del to_process[sig]
 								f.close();
 							else:
 								debug("Adding file %s %s" % (fn, sig))
-								existing[sig] = fn
+								existing[sig] = fn #leave in existing in case more than 2 duplicates
+								to_process[sig] = fn
 								filehandles[sig] = f
 
 						except Exception, e:
@@ -459,10 +466,11 @@ class Tail(object):
 							exc_type, exc_value, exc_traceback = sys.exc_info()
 							traceback.print_tb(exc_traceback)
 
-				sigs = existing.keys()
+				debug("To Process %s" % to_process)
+				sigs = to_process.keys()
 				for sig in sigs:
 					try:
-						fn = existing[sig]
+						fn = to_process[sig]
 						debug("Processing file %s %s" % (fn, sig))
 						f = filehandles[sig]
 						self.processFile(f, fn, sig)
@@ -478,7 +486,7 @@ class Tail(object):
 
 
 				if len(existing) != len(self.offsets):
-					self.purgeOffsetsNotIn(existing)
+					self.purgeOffsetsNotIn(to_process)
 				if not self.follow:
 					break
 				time.sleep(1)
