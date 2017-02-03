@@ -17,12 +17,14 @@ import threading
 import Queue
 import signal
 import traceback
+import json
 
 DEFAULT_SIGNAGURE_LENGTH=256
 
 filter_stopped = Queue.Queue()
 stop_signal = Queue.Queue()
 running_lock = threading.Lock()
+debug_on = False
 
 def should_stop():
 	return not stop_signal.empty()
@@ -36,6 +38,7 @@ def main():
 		"IMPORTANT: only files with size >= signature-length (default %d) bytes will be processed. "
 		"Zip files will be open recursively, and only once." % DEFAULT_SIGNAGURE_LENGTH)
 
+	parser.add_option('-D', '--debug', action="store_true", dest="debug", help="Enable debug output", default=False)
 	parser.add_option('-f', '--follow', action="store_true", dest="follow", help="Pools the file very second for changes in an infinite loop.", default=False)
 	parser.add_option('-p', '--offsets', action="store", dest="offsets", help="File to persist the last offsets read for each file. If it doesn't exist, the files are read from beginning.", default='/dev/null')
 	parser.add_option('-t', '--tcp', action="store", dest="host", help="Sends the output to the host:port via TCP.", metavar="HOST:PORT")
@@ -48,6 +51,11 @@ def main():
 	parser.add_option('-k', '--kill', action="store", dest="kill", help="Send SIGTERM to process id saved in FILE and exit", metavar="FILE")
 
 	options, args = parser.parse_args()
+
+	if options.debug:
+		log("DEBUG ON")
+		global debug_on
+		debug_on = True
 
 	if options.dump_pid:
 		f = open(options.dump_pid,'w')
@@ -153,6 +161,8 @@ def log(msg):
 	sys.stderr.flush()
 
 def debug(msg):
+	if debug_on:
+		log("DEBUG: "+ msg);
 	# sys.stderr.write(str(msg))
 	# sys.stderr.write("\n")
 	# sys.stderr.flush()
@@ -265,6 +275,7 @@ class Tail(object):
 		self.start_from_tail = options.start_from_tail
 		self.readOffsets()
 
+
 	def persistOffsets(self):
 		if self.offsetsfn == '/dev/null':
 			return
@@ -319,6 +330,7 @@ class Tail(object):
 		if should_stop():
 			return
 		for line in f:
+			debug("line %s" % line.replace("\n",""))
 			if not self.starting or line >= self.starting:
 				self.output.write(line)
 			if should_stop():
@@ -375,13 +387,13 @@ class Tail(object):
 			self.processFile(f, fn, existing)
 		finally:
 			f.close()
+			debug("processFileByName, close file");
 
 	def processFile(self, f, fn, sig):
-		debug("processFile: %s" % fn)
-
 		info = self.offsets.get(sig, Info(sig=sig, name=fn))
-		lastOffset = info.offset
+		debug("processFile %s  %s" % (fn, info.dump()))
 
+		lastOffset = info.offset
 		info.name = fn
 
 		if self.isCompressed(fn):
@@ -392,14 +404,17 @@ class Tail(object):
 				info.offset = -1
 		else:
 			if self.start_from_tail:
+				debug("starting from tail %s" % fn)
 				info.offsets = os.path.getsize(fn)
 			if os.path.exists(fn) and os.path.getsize(fn) < info.offset:
-				log("WARN file %s was truncated" % fn)
+				log("METRIC ns=forwarder.truncated file=%s filesize=%s offset=%s" % (fn, os.path.getsize(fn), info.offset))
 				info.offset = os.path.getsize(fn)
 			else:
+				debug("Seeking to %s in %s, currently at %s" % (info.offset, fn, f.tell()))
 				f.seek(info.offset)
 				self.copy(f)
 				info.offset = f.tell()
+				debug("Setting offset for: %s to %s (info: %s)" % (fn, info.offset, info.dump()))
 
 
 		if lastOffset != info.offset:
@@ -414,28 +429,52 @@ class Tail(object):
 				if not filter_stopped.empty():
 					sys.exit(1)
 				existing = {}
-
+				filehandles = {}
 				for fnpattern in self.fnpatterns:
 					for fn in glob.glob(fnpattern):
+						debug("Checking fn %s" % fn)
 						try:
 							if not os.path.isfile(fn):
 								log("File no longer exists: %s" % fn)
 								continue
 							if os.path.getsize(fn) < self.signatureLength and not self.isCompressed(fn):
+								log("Skipping as sig too short or compressed: %s" % fn)
 								continue
+							f = open(fn, 'rb')
 							sig = self.generateSignature(f)
-							if existing[sig]:
-								log("Multiple files with same sig exist, excluding both: %s" % fn)
-								delete file_names[sig]
-							else
+							debug("Sig for fn %s is %s" % (fn, sig))
+							if sig in existing:
+								log("METRIC ns=forwarder.duplicatesig file=%s sig=%s" % (fn, sig))
+								del existing[sig]
+								f.close();
+							else:
+								debug("Adding file %s %s" % (fn, sig))
 								existing[sig] = fn
+								filehandles[sig] = f
 
-				for fn in existing.values():
-						self.processFileByName(fn, sig)
+						except Exception, e:
+							log("METRIC ns=forwarder.error.preprocess file=\"%s\" exception=\"%s\"" % (fn, str(e).replace("\n", "")))
+							log("Exception=\"%s\"" % e)
+							f.close();
+							exc_type, exc_value, exc_traceback = sys.exc_info()
+							traceback.print_tb(exc_traceback)
+
+				sigs = existing.keys()
+				for sig in sigs:
+					try:
+						fn = existing[sig]
+						debug("Processing file %s %s" % (fn, sig))
+						f = filehandles[sig]
+						self.processFile(f, fn, sig)
 					except Exception, e:
-						log("Exception: %s" % e)
+						log("METRIC ns=forwarder.error.process file=\"%s\" exception=\"%s\"" % (fn, str(e).replace("\n", "")))
+						log("Exception=\"%s\"" % e)
 						exc_type, exc_value, exc_traceback = sys.exc_info()
 						traceback.print_tb(exc_traceback)
+						f.close();
+
+					finally:
+						f.close();
 
 
 				if len(existing) != len(self.offsets):
