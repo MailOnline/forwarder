@@ -5,7 +5,7 @@ uuid=$(last_uuid)
 
 sender -f 'myapp.*' -l "grep --line-buffered -v ${uuid}" > /dev/null &
 sender_pid=$!
-sleep 0.1 # to avoid race condition
+sleep 1 # to avoid race condition
 
 assert "ps ax | grep ${uuid} | grep -v sender | grep -v filter_wrapper | grep line-buffered | count_lines" 1
 

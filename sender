@@ -484,7 +484,6 @@ class Tail(object):
 					finally:
 						f.close();
 
-
 				if len(existing) != len(self.offsets):
 					self.purgeOffsetsNotIn(to_process)
 				if not self.follow:
