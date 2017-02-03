@@ -376,17 +376,10 @@ class Tail(object):
 		finally:
 			f.close()
 
-	def processFile(self, f, fn, existing):
+	def processFile(self, f, fn, sig):
 		debug("processFile: %s" % fn)
-		sig = self.generateSignature(f)
-		if not sig:
-			return
-
-		if sig in existing and os.path.getsize(fn) != os.path.getsize(existing[sig]):
-			log("WARN Files '%s' and '%s' have same signature and different sizes" % (fn, existing[sig]))
 
 		info = self.offsets.get(sig, Info(sig=sig, name=fn))
-
 		lastOffset = info.offset
 
 		info.name = fn
@@ -408,7 +401,6 @@ class Tail(object):
 				self.copy(f)
 				info.offset = f.tell()
 
-		existing[sig] = fn
 
 		if lastOffset != info.offset:
 			self.offsets[sig] = info
@@ -422,6 +414,7 @@ class Tail(object):
 				if not filter_stopped.empty():
 					sys.exit(1)
 				existing = {}
+
 				for fnpattern in self.fnpatterns:
 					for fn in glob.glob(fnpattern):
 						try:
@@ -430,11 +423,19 @@ class Tail(object):
 								continue
 							if os.path.getsize(fn) < self.signatureLength and not self.isCompressed(fn):
 								continue
-							self.processFileByName(fn, existing)
-						except Exception, e:
-							log("Exception: %s" % e)
-							exc_type, exc_value, exc_traceback = sys.exc_info()
-							traceback.print_tb(exc_traceback)
+							sig = self.generateSignature(f)
+							if existing[sig]:
+								log("Multiple files with same sig exist, excluding both: %s" % fn)
+								delete file_names[sig]
+							else
+								existing[sig] = fn
+
+				for fn in existing.values():
+						self.processFileByName(fn, sig)
+					except Exception, e:
+						log("Exception: %s" % e)
+						exc_type, exc_value, exc_traceback = sys.exc_info()
+						traceback.print_tb(exc_traceback)
 
 
 				if len(existing) != len(self.offsets):
