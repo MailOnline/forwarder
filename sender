@@ -331,7 +331,7 @@ class Tail(object):
 		if should_stop():
 			return
 		for line in f:
-			debug("line %s" % line.replace("\n",""))
+			if debug_on: debug("line %s" % line.replace("\n",""))
 			if not self.starting or line >= self.starting:
 				self.output.write(line)
 			if should_stop():
@@ -368,7 +368,7 @@ class Tail(object):
 			self.processZipFile(f, fn)
 
 	def processGzipFile(self, fn):
-		debug("gz: %s" % fn)
+		if debug_on: debug("gz: %s" % fn)
 		f = gzip.open(fn)
 		try:
 			self.processFile(f, '/var/tmp/fake.log', {})
@@ -382,7 +382,7 @@ class Tail(object):
 		shutil.rmtree(path)
 
 	def processFileByName(self, fn, existing):
-		debug("processFileByName: %s" % fn)
+		if debug_on: debug("processFileByName: %s" % fn)
 		f = open(fn, 'rb')
 		try:
 			self.processFile(f, fn, existing)
@@ -392,30 +392,30 @@ class Tail(object):
 
 	def processFile(self, f, fn, sig):
 		info = self.offsets.get(sig, Info(sig=sig, name=fn))
-		debug("processFile %s  %s" % (fn, info.dump()))
+		if debug_on: debug("processFile %s  %s" % (fn, info.dump()))
 
 		lastOffset = info.offset
 		info.name = fn
 
 		if self.isCompressed(fn):
-			debug("compressed: %s" % fn)
+			if debug_on: debug("compressed: %s" % fn)
 			if info.offset == 0:
 				if not self.start_from_tail:
 					self.processCompressedFile(f, fn)
 				info.offset = -1
 		else:
 			if self.start_from_tail:
-				debug("starting from tail %s" % fn)
+				if debug_on: debug("starting from tail %s" % fn)
 				info.offsets = os.path.getsize(fn)
 			if os.path.exists(fn) and os.path.getsize(fn) < info.offset:
 				log("METRIC ns=forwarder.truncated file=%s filesize=%s offset=%s" % (fn, os.path.getsize(fn), info.offset))
 				info.offset = os.path.getsize(fn)
 			else:
-				debug("Seeking to %s in %s, currently at %s" % (info.offset, fn, f.tell()))
+				if debug_on: debug("Seeking to %s in %s, currently at %s" % (info.offset, fn, f.tell()))
 				f.seek(info.offset)
 				self.copy(f)
 				info.offset = f.tell()
-				debug("Setting offset for: %s to %s (info: %s)" % (fn, info.offset, info.dump()))
+				if debug_on: debug("Setting offset for: %s to %s (info: %s)" % (fn, info.offset, info.dump()))
 
 
 		if lastOffset != info.offset:
@@ -434,17 +434,17 @@ class Tail(object):
 				filehandles = {}
 				for fnpattern in self.fnpatterns:
 					for fn in glob.glob(fnpattern):
-						debug("Checking fn %s" % fn)
+						if debug_on: debug("Checking fn %s" % fn)
 						try:
 							if not os.path.isfile(fn):
 								log("File no longer exists: %s" % fn)
 								continue
 							if os.path.getsize(fn) < self.signatureLength and not self.isCompressed(fn):
-								log("Skipping as sig too short or compressed: %s" % fn)
+								log("Skipping as file too short to generate sig or file is compressed: %s" % fn)
 								continue
 							f = open(fn, 'rb')
 							sig = self.generateSignature(f)
-							debug("Sig for fn %s is %s" % (fn, sig))
+							if debug_on: debug("Sig for fn %s is %s" % (fn, sig))
 							sig_fn = sig+fn;
 							if sig in existing:
 								if not sig_fn in self.duplicates:
@@ -454,7 +454,7 @@ class Tail(object):
 									del to_process[sig]
 								f.close();
 							else:
-								debug("Adding file %s %s" % (fn, sig))
+								if debug_on: debug("Adding file %s %s" % (fn, sig))
 								existing[sig] = fn #leave in existing in case more than 2 duplicates
 								to_process[sig] = fn
 								filehandles[sig] = f
@@ -465,13 +465,13 @@ class Tail(object):
 							f.close();
 							exc_type, exc_value, exc_traceback = sys.exc_info()
 							traceback.print_tb(exc_traceback)
-
-				debug("To Process %s" % to_process)
+				
+				if debug_on: debug("To Process %s" % to_process)
 				sigs = to_process.keys()
 				for sig in sigs:
 					try:
 						fn = to_process[sig]
-						debug("Processing file %s %s" % (fn, sig))
+						if debug_on: debug("Processing file %s %s" % (fn, sig))
 						f = filehandles[sig]
 						self.processFile(f, fn, sig)
 					except Exception, e:
