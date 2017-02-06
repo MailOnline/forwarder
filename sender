@@ -435,6 +435,7 @@ class Tail(object):
 				for fnpattern in self.fnpatterns:
 					for fn in glob.glob(fnpattern):
 						if debug_on: debug("Checking fn %s" % fn)
+						f = None
 						try:
 							if not os.path.isfile(fn):
 								log("File no longer exists: %s" % fn)
@@ -452,7 +453,7 @@ class Tail(object):
 									self.duplicates[sig_fn] = True;
 								if sig in to_process: #take original duplicate out of to_process
 									del to_process[sig]
-								f.close();
+								f.close()
 							else:
 								if debug_on: debug("Adding file %s %s" % (fn, sig))
 								existing[sig] = fn #leave in existing in case more than 2 duplicates
@@ -462,13 +463,15 @@ class Tail(object):
 						except Exception, e:
 							log("METRIC ns=forwarder.error.preprocess file=\"%s\" exception=\"%s\"" % (fn, str(e).replace("\n", "")))
 							log("Exception=\"%s\"" % e)
-							f.close();
+							if f: f.close()
 							exc_type, exc_value, exc_traceback = sys.exc_info()
 							traceback.print_tb(exc_traceback)
-				
+
+
 				if debug_on: debug("To Process %s" % to_process)
 				sigs = to_process.keys()
 				for sig in sigs:
+					f = None
 					try:
 						fn = to_process[sig]
 						if debug_on: debug("Processing file %s %s" % (fn, sig))
@@ -479,10 +482,9 @@ class Tail(object):
 						log("Exception=\"%s\"" % e)
 						exc_type, exc_value, exc_traceback = sys.exc_info()
 						traceback.print_tb(exc_traceback)
-						f.close();
-
+						f.close()
 					finally:
-						f.close();
+						if f and not f.closed: f.close()
 
 				if len(existing) != len(self.offsets):
 					self.purgeOffsetsNotIn(to_process)
