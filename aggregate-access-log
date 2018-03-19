@@ -1,5 +1,40 @@
 #!/usr/bin/env awk -f
 
+BEGIN {
+    # derive class from matching hostname against regex patterns provided from environment variable
+    # export ACCESS_CLASSES='[["clj", "^clj-fe-"], ["app-topic", "app-topic.*$"]]'
+    # OR via mol-config
+    # config:
+    #   /:
+    #     ACCESS_CLASSES:
+    #      - [ clj, '(clj-|bauhaus-)' ]
+    #      - [ cc, '(cc-|cc[d])' ]
+
+    class="default"
+    "hostname" | getline hostname
+    while("echo \"$ACCESS_CLASSES\" | jq -r '.[] | .[0] +\" \"+.[1]'" | getline) {
+       _regex=$2
+       _class=$1
+       #printf "Checking if %s matches %s to give %s\n", hostname, $_regex, $_class > "/dev/stderr"
+       if (hostname ~ $_regex) {
+           #printf ">> %s matches %s to give %s\n", hostname, $_regex, $_class > "/dev/stderr"
+           class=$_class
+           break;
+       }
+    }
+
+    if (match(hostname, /-(\w+)[0-9]+\./, results)) {
+      #printf "Cluster for host %s found     %s     \n", hostname, results[1] > "/dev/stderr"
+      cluster=results[1]
+    } else {
+      #printf "cluster not found for %s\n", hostname > "/dev/stderr"
+      cluster=null
+    }
+
+    printf "METRIC ns=aggregatelogger.start host=%s class=%s cluster=%s\n", hostname, class, cluster > "/dev/stderr"
+}
+
+
 function top_array(result, top, acc) {
     delete temp
     c = 0
@@ -30,10 +65,8 @@ function print_ua(ts, acc) {
     for (i in tops) {
         ua = tops[i][2]
         gsub("\"", "'", ua)
-        printf "%s ns=fe.access.ua count=%d ua=\"%s\"\n", ts, tops[i][1], ua
-
+        printf "%s ns=fe.access.ua class="%s" cluster="%s" count=%d ua=\"%s\"\n", ts, class, cluster, tops[i][1], ua
     }
-
     delete tops
 }
 
@@ -46,7 +79,7 @@ function print_errors(ts, acc) {
         split(value, values, " ")
         code = values[1]+0
         uri = values[2]
-        printf "%s ns=fe.access.errors count=%d error=%d uri=\"%s\"\n", ts, tops[i][1], code, uri
+        printf "%s ns=fe.access.errors class="%s" cluster="%s" count=%d error=%d uri=\"%s\"\n", ts, class, cluster, tops[i][1], code, uri
 
     }
 
@@ -68,12 +101,11 @@ function print_reqs(ts, acc) {
         split(value, values, " ")
         code = values[1]+0
         uri = values[2]
-        printf "%s ns=fe.access.slow count=%d total=%d code=%d uri=\"%s\"\n", ts, count, total, code, uri
+        printf "%s ns=fe.access.slow class="%s" cluster="%s" count=%d total=%d code=%d uri=\"%s\"\n", ts, class, cluster, count, total, code, uri
 
     }
 
     delete tops
-
 
     top_array(tops, 15, acc["reqs"])
 
@@ -85,8 +117,7 @@ function print_reqs(ts, acc) {
         split(value, values, " ")
         code = values[1]+0
         uri = values[2]
-        printf "%s ns=fe.access.count count=%d total=%d code=%d uri=\"%s\"\n", ts, count, total, code, uri
-
+        printf "%s ns=fe.access.count class="%s" cluster="%s" count=%d total=%d code=%d uri=\"%s\"\n", ts, class, cluster, count, total, code, uri
     }
 
     delete tops
@@ -95,17 +126,20 @@ function print_reqs(ts, acc) {
 
 function print_groups(ts, acc) {
     for (i in acc["times"]) {
-        printf "%s ns=fe.access.group group_name=\"%s\" count=%d avg=%.1f max=%d min=%d\n", ts, i, acc["count"][i], acc["times"][i]/acc["count"][i], acc["max"][i], acc["min"][i]
+        printf "%s ns=fe.access.group class="%s" cluster="%s" group_name=\"%s\" count=%d avg=%.1f max=%d min=%d\n", ts, class, cluster, i, acc["count"][i], acc["times"][i]/acc["count"][i], acc["max"][i], acc["min"][i]
     }
 }
 
 function print_codes(ts, acc) {
     for (i in acc["code"]) {
-        printf "%s ns=fe.access.bots response_code=%s count=%d bots=%d\n", ts, i, acc["code"][i], acc["bots"][i]
+        printf "%s ns=fe.access.bots class="%s" cluster="%s" response_code=%s count=%d bots=%d\n", ts, class, cluster, i, acc["code"][i], acc["bots"][i]
+
     }
 }
 
 function print_acc(ts, acc) {
+    #DEBUG ONLY
+    #printf "%s times=%s class="%s" cluster="%s" code=%s ua=%s reqs=%s count=%s size=%s\n ", ts, class, cluster, length(acc["times"]), length(acc["code"]), length(acc["ua"]), length(acc["reqs"]), length(acc["count"]), length(acc["size"])   > "/dev/stderr"
 
     # in case we lose the next few bytes if network connection is lost, we just lose empty lines
     for (i = 1; i <= 10; i++) {
@@ -118,29 +152,58 @@ function print_acc(ts, acc) {
     if (length(acc["errors"]) > 0) { print_errors(ts, acc["errors"]) }
     if (length(acc["reqs"]) > 0) { print_reqs(ts, acc) }
 
+    print ts > "/dev/stderr"  # not 100% sure what this is for. Possibly originally planned to flush buffer but it goes to STDERR which doesn't make sense. Leaving incase removing breaks it. At least it shows that the process is not hung.
 
-    print ts > "/dev/stderr"
+    #printf "%s times=%s code=%s", ts, length(acc["times"]), length(acc["code"]) > "/dev/stderr"
     fflush(stdout)
 }
 
+
 {
+    # DEBUG ONLY
+    # printf "line is '%s'\n", $0 > "/dev/stderr"
 
-    ts = sprintf("%s%s", substr($4, 2, 19), substr($4, 25, 5))
-    current_minute = substr(ts, 1, 16)
+    # Known log formats
+    # ::ffff:10.251.203.252 - - [15/Mar/2018:11:50:55 +0000] "GET /api/apptopics HTTP/1.1" 200 40331 "http://app-topics.int.mol.dmgt.net/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Ge
+    # 10.251.198.10 - - [2018-03-15T14:46:11.946+0000] "HEAD /home/index.html HTTP/1.1" 200 0 579 "-" "Varnish Health Probe"
 
+    #                      ip         ?       ?        time           method url      proto    code     length  restime(opt) referrer   ua   
+    if        (match($0, /([^ ]+)\s([^ ]+)\s([^ ]+)\s\[([^\]]+)\]\s\"(\w+) ([^ ]+)\s([^ ]+)"\s([0-9]+)\s([0-9]+)\s(([0-9]+)\s)?"([^ ]+)"\s"(.*)"/, results)) {
+      process_line(results)
+
+    } else {
+      printf "Invalid line '%s'\n", $0 > "/dev/stderr";
+    }
+}
+
+function process_line(results) {
+    _time=results[4]
+    _url=results[6]
+    _proto=results[7]
+    _code=results[8]
+    _size=results[9]
+    _duration=results[11]
+    _ua=results[13]
+
+    # Known time formats
+    #[2018-03-15T14:46:11.946+0000]
+    #[15/Mar/2018:11:50:55 +0000]
+
+    ts = _time
+    match(_time, /(.*[0-9]{2}:[0-9]{2}):[0-9]{2}/, _time_results);  //find string reprepresenting time to nearest min
+    current_minute = _time_results[1]
+
+    # output aggregations if we have passed prior recorded minute
     if (current_minute != last_minute) {
-
         if (length(first_timestamp)>0) {
-
             print_acc(first_timestamp, acc)
         }
-
         first_timestamp = ts
         last_minute = current_minute;
         delete acc
     }
 
-    url = $6
+    url = _url
 
     if (gsub("^/textbased/.*", "textbased", url) ||
 	gsub(".*article-[0-9]*/amp/.*", "amp/articles", url) ||
@@ -171,12 +234,11 @@ function print_acc(ts, acc) {
         gsub("^/.*$", "others", url))
     {}
 
-    acc["code"][$8] +=1
+    acc["code"][_code] +=1
 
-
-    response_time = $10+0
+    response_time = _duration+0
     acc["count"][url] += 1
-    acc["size"][url] += $9
+    acc["size"][url] += _size
     acc["times"][url] += response_time
     if (length(acc["min"][url]) == 0 || acc["min"][url] > response_time) {
         acc["min"][url] = response_time
@@ -185,19 +247,15 @@ function print_acc(ts, acc) {
         acc["max"][url] = response_time
     }
 
-    a=""
-    for (i=12;i<=NF;i++) {
-        a=a " " $i
-    }
-    ua = substr(a,3,length(a)-3)
+    ua = _ua
     acc["ua"][ua] += 1
     IGNORECASE = 1
     if (match(ua, /bot|google|crawler|spider|robot|crawling|wget|http|slurp|analyzer|sitecon|@/) || ua == "-") {
-        acc["bots"][$8] += 1
+        acc["bots"][_code] += 1
     }
 
-    code = $8+0
-    uri = $6
+    code = _code+0
+    uri = _url
     gsub("\\?.*", "", uri)
     code_uri = sprintf("%03d %s", code, uri)
     acc["reqs"][code_uri] += 1
@@ -207,10 +265,11 @@ function print_acc(ts, acc) {
         acc["errors"][code_uri] += 1
     }
 
-
-
+    # DEBUG ONLY
+    # printf "_time=%s _url=%s _proto=%s _code=%s _size=%s _duration=%s ts=%s ua=%s code_uri=%s \n", _time, _url, _proto, _code, _size, _duration, ts, ua, code_uri > "/dev/stderr"
 
 }
+
 END {
     print_acc(first_timestamp, acc)
 

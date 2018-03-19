@@ -1,7 +1,10 @@
 #!/usr/bin/env python
+from __future__ import print_function
 
 import sys, json, os, datetime, re, Queue, threading, time, optparse, base64
+from select import select
 from stompclient import StompClient
+import sys
 
 class ExitToken:
     pass
@@ -20,6 +23,7 @@ parser.add_option('-k', '--routing-key NAME', action="store", dest="routing_key"
 parser.add_option('-v', '--virtual-host NAME', action="store", dest="vhost", help="Virtual host (defaults to '/')", default="/")
 parser.add_option('-u', '--credentials USERNAME:PASSWORD', action="store", dest="credentials", help="Username:password passed as basic auth to http request")
 parser.add_option('-c', '--cut', action="store_true", dest="cut", help="Discard bytes from start of line until OFFSET", default=False)
+parser.add_option('-b', '--heartbeat INTERVAL', action="store", dest="heartbeat", help="Interval in seconds to output a heartbeat to stderr", default=60, type="int")
 
 options, args = parser.parse_args()
 
@@ -29,6 +33,22 @@ if not options.exchange:
 if len(args) == 0:
     parser.error('Stomp host:port not given')
 
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
+
+def log_json(name, props={}):
+    a = {
+        'timestamp': datetime.datetime.now().isoformat(),
+        'ns': 'forwarder.stomp',
+        'hostname': hostname,
+        'name': name
+    }
+    z = props.copy()
+    z.update(a)
+    eprint(json.dumps(z))
+
+
+log_json('starting', dict([(property, value) for property, value in vars(options).iteritems()]))
 
 stomp_address = args[0].split(":")
 
@@ -93,14 +113,24 @@ t.daemon = True
 t.start()
 
 try:
+    last_heartbeat = time.time();
     while 1:
-        line = sys.stdin.readline()
-        if not line:
-            q.put(exit_token)
-            break
-        line = line[0:-1]
-        if len(line) > 0:
-            q.put({'time': datetime.datetime.now().isoformat(), 'line': line})
+        rlist, _, _ = select([sys.stdin], [], [], 0.1)
+        if rlist:
+            line = sys.stdin.readline()
+            if not line:
+                q.put(exit_token)
+                break
+            line = line[0:-1]
+            if len(line) > 0:
+                q.put({'time': datetime.datetime.now().isoformat(), 'line': line})
+
+        now = time.time();
+        if now - last_heartbeat >= options.heartbeat:
+            log_json('heartbeat')
+            last_heartbeat += options.heartbeat
+
+
     t.join()
 except KeyboardInterrupt, e:
     pass
