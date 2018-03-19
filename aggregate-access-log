@@ -172,7 +172,7 @@ function print_acc(ts, acc) {
       process_line(results)
 
     } else {
-      printf "Invalid line '%s'\n", $0 > "/dev/stderr";
+      printf "METRIC ns=aggregatelogger.invalid class=%s cluster=%s line=\"%s\"\n", class, cluster, line > "/dev/stderr"
     }
 }
 
