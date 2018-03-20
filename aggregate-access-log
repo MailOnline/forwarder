@@ -167,8 +167,10 @@ function print_acc(ts, acc) {
     # ::ffff:10.251.203.252 - - [15/Mar/2018:11:50:55 +0000] "GET /api/apptopics HTTP/1.1" 200 40331 "http://app-topics.int.mol.dmgt.net/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Ge
     # 10.251.198.10 - - [2018-03-15T14:46:11.946+0000] "HEAD /home/index.html HTTP/1.1" 200 0 579 "-" "Varnish Health Probe"
 
+    _line=$0
+
     #                      ip         ?       ?        time           method url      proto    code     length  restime(opt) referrer   ua   
-    if        (match($0, /([^ ]+)\s([^ ]+)\s([^ ]+)\s\[([^\]]+)\]\s\"(\w+) ([^ ]+)\s([^ ]+)"\s([0-9]+)\s([0-9]+)\s(([0-9]+)\s)?"([^ ]+)"\s"(.*)"/, results)) {
+    if        (match(_line, /([^ ]+)\s([^ ]+)\s([^ ]+)\s\[([^\]]+)\]\s\"(\w+) ([^ ]+)\s([^ ]+)"\s([0-9]+)\s([0-9]+)\s(([0-9]+)\s)?"([^ ]+)"\s"(.*)"/, results)) {
       process_line(results)
 
     } else {
