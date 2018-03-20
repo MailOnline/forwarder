@@ -15,9 +15,9 @@ BEGIN {
     while("echo \"$ACCESS_CLASSES\" | jq -r '.[] | .[0] +\" \"+.[1]'" | getline) {
        _regex=$2
        _class=$1
-       #printf "Checking if %s matches %s to give %s\n", hostname, $_regex, $_class > "/dev/stderr"
-       if (hostname ~ $_regex) {
-           #printf ">> %s matches %s to give %s\n", hostname, $_regex, $_class > "/dev/stderr"
+       #printf "Checking if %s matches %s to give %s\n", hostname, _regex, _class > "/dev/stderr"
+       if (hostname ~ _regex) {
+           #printf ">> %s matches %s to give %s\n", hostname, _regex, _class > "/dev/stderr"
            class=$_class
            break;
        }
