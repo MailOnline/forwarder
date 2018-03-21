@@ -58,7 +58,7 @@ export PATH=$base:$PATH
 
 function run_tests() {
 	current_dir=$(pwd)
-	for test in $(find tests -name 'test*.sh' | sort); do 
+	for test in $(find tests -name 'test*.sh' | sort | grep "$ONLY"); do 
 		mkdir -p $workdir/$test
 		cd $workdir/$test
 		echo Running tests/$test ...
@@ -70,4 +70,3 @@ function run_tests() {
 }
 
 run_tests
-
