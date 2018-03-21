@@ -18,7 +18,7 @@ BEGIN {
        #printf "Checking if %s matches %s to give %s\n", hostname, _regex, _class > "/dev/stderr"
        if (hostname ~ _regex) {
            #printf ">> %s matches %s to give %s\n", hostname, _regex, _class > "/dev/stderr"
-           class=$_class
+           class=_class
            break;
        }
     }
