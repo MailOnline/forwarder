@@ -65,7 +65,7 @@ function print_ua(ts, acc) {
     for (i in tops) {
         ua = tops[i][2]
         gsub("\"", "'", ua)
-        printf "%s ns=fe.access.ua class=\"%s\" cluster=\"%s\" count=%d ua=\"%s\"\n", ts, class, cluster, tops[i][1], ua
+        printf "%s METRIC ns=fe.access.ua class=\"%s\" cluster=\"%s\" count=%d ua=\"%s\"\n", ts, class, cluster, tops[i][1], ua
     }
     delete tops
 }
@@ -79,7 +79,7 @@ function print_errors(ts, acc) {
         split(value, values, " ")
         code = values[1]+0
         uri = values[2]
-        printf "%s ns=fe.access.errors class=\"%s\" cluster=\"%s\" count=%d error=%d uri=\"%s\"\n", ts, class, cluster, tops[i][1], code, uri
+        printf "%s METRIC ns=fe.access.errors class=\"%s\" cluster=\"%s\" count=%d error=%d uri=\"%s\"\n", ts, class, cluster, tops[i][1], code, uri
 
     }
 
@@ -101,7 +101,7 @@ function print_reqs(ts, acc) {
         split(value, values, " ")
         code = values[1]+0
         uri = values[2]
-        printf "%s ns=fe.access.slow class=\"%s\" cluster=\"%s\" count=%d total=%d code=%d uri=\"%s\"\n", ts, class, cluster, count, total, code, uri
+        printf "%s METRIC ns=fe.access.slow class=\"%s\" cluster=\"%s\" count=%d total=%d code=%d uri=\"%s\"\n", ts, class, cluster, count, total, code, uri
 
     }
 
@@ -117,7 +117,7 @@ function print_reqs(ts, acc) {
         split(value, values, " ")
         code = values[1]+0
         uri = values[2]
-        printf "%s ns=fe.access.count class=\"%s\" cluster=\"%s\" count=%d total=%d code=%d uri=\"%s\"\n", ts, class, cluster, count, total, code, uri
+        printf "%s METRIC ns=fe.access.count class=\"%s\" cluster=\"%s\" count=%d total=%d code=%d uri=\"%s\"\n", ts, class, cluster, count, total, code, uri
     }
 
     delete tops
@@ -126,13 +126,13 @@ function print_reqs(ts, acc) {
 
 function print_groups(ts, acc) {
     for (i in acc["times"]) {
-        printf "%s ns=fe.access.group class=\"%s\" cluster=\"%s\" group_name=\"%s\" count=%d avg=%.1f max=%d min=%d\n", ts, class, cluster, i, acc["count"][i], acc["times"][i]/acc["count"][i], acc["max"][i], acc["min"][i]
+        printf "%s METRIC ns=fe.access.group class=\"%s\" cluster=\"%s\" group_name=\"%s\" count=%d avg=%.1f max=%d min=%d\n", ts, class, cluster, i, acc["count"][i], acc["times"][i]/acc["count"][i], acc["max"][i], acc["min"][i]
     }
 }
 
 function print_codes(ts, acc) {
     for (i in acc["code"]) {
-        printf "%s ns=fe.access.bots class=\"%s\" cluster=\"%s\" response_code=%s count=%d bots=%d\n", ts, class, cluster, i, acc["code"][i], acc["bots"][i]
+        printf "%s METRIC ns=fe.access.bots class=\"%s\" cluster=\"%s\" response_code=%s count=%d bots=%d\n", ts, class, cluster, i, acc["code"][i], acc["bots"][i]
 
     }
 }
