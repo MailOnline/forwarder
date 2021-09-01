@@ -30,7 +30,7 @@ function print_ua(ts, acc) {
     for (i in tops) {
         ua = tops[i][2]
         gsub("\"", "'", ua)
-        printf "%s ns=fe.access.ua count=%d ua=\"%s\"\n", ts, tops[i][1], ua
+        printf "%s METRIC ns=fe.access.ua count=%d ua=\"%s\"\n", ts, tops[i][1], ua
 
     }
 
@@ -46,7 +46,7 @@ function print_errors(ts, acc) {
         split(value, values, " ")
         code = values[1]+0
         uri = values[2]
-        printf "%s ns=fe.access.errors count=%d error=%d uri=\"%s\"\n", ts, tops[i][1], code, uri
+        printf "%s METRIC ns=fe.access.errors count=%d error=%d uri=\"%s\"\n", ts, tops[i][1], code, uri
 
     }
 
@@ -68,7 +68,7 @@ function print_reqs(ts, acc) {
         split(value, values, " ")
         code = values[1]+0
         uri = values[2]
-        printf "%s ns=fe.access.slow count=%d total=%d code=%d uri=\"%s\"\n", ts, count, total, code, uri
+        printf "%s METRIC ns=fe.access.slow count=%d total=%d code=%d uri=\"%s\"\n", ts, count, total, code, uri
 
     }
 
@@ -85,7 +85,7 @@ function print_reqs(ts, acc) {
         split(value, values, " ")
         code = values[1]+0
         uri = values[2]
-        printf "%s ns=fe.access.count count=%d total=%d code=%d uri=\"%s\"\n", ts, count, total, code, uri
+        printf "%s METRIC ns=fe.access.count count=%d total=%d code=%d uri=\"%s\"\n", ts, count, total, code, uri
 
     }
 
@@ -95,13 +95,13 @@ function print_reqs(ts, acc) {
 
 function print_groups(ts, acc) {
     for (i in acc["times"]) {
-        printf "%s ns=fe.access.group group_name=\"%s\" count=%d avg=%.1f max=%d min=%d\n", ts, i, acc["count"][i], acc["times"][i]/acc["count"][i], acc["max"][i], acc["min"][i]
+        printf "%s METRIC ns=fe.access.group group_name=\"%s\" count=%d avg=%.1f max=%d min=%d\n", ts, i, acc["count"][i], acc["times"][i]/acc["count"][i], acc["max"][i], acc["min"][i]
     }
 }
 
 function print_codes(ts, acc) {
     for (i in acc["code"]) {
-        printf "%s ns=fe.access.bots response_code=%s count=%d bots=%d\n", ts, i, acc["code"][i], acc["bots"][i]
+        printf "%s METRIC ns=fe.access.bots response_code=%s count=%d bots=%d\n", ts, i, acc["code"][i], acc["bots"][i]
     }
 }
 
