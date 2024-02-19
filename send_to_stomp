@@ -1,16 +1,20 @@
 #!/usr/bin/env python
-from __future__ import print_function
 
-import sys, json, os, datetime, re, Queue, threading, time, optparse, base64
+import sys, json, os, datetime, re, threading, time, optparse, base64
+try:
+  import queue           # Python 3 import
+except ImportError:
+  import queue as queue  # If queue missing, we're on Py2, import Py2 as Py3 name
+
 from select import select
 from stompclient import StompClient
 import sys
 
 class ExitToken:
-    pass
+  pass
 exit_token = ExitToken()
 
-q = Queue.Queue(1000)
+q = queue.Queue(1000)
 
 hostname = os.popen("hostname").read().strip()
 
@@ -28,27 +32,26 @@ parser.add_option('-b', '--heartbeat INTERVAL', action="store", dest="heartbeat"
 options, args = parser.parse_args()
 
 if not options.exchange:
-    parser.error('Exchange not given')
+  parser.error('Exchange not given')
 
 if len(args) == 0:
-    parser.error('Stomp host:port not given')
+  parser.error('Stomp host:port not given')
 
 def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
+  print(*args, file=sys.stderr, **kwargs)
 
 def log_json(name, props={}):
-    a = {
-        'timestamp': datetime.datetime.now().isoformat(),
-        'ns': 'forwarder.stomp',
-        'hostname': hostname,
-        'name': name
-    }
-    z = props.copy()
-    z.update(a)
-    eprint(json.dumps(z))
+  a = {
+    'timestamp': datetime.datetime.now().isoformat(),
+    'ns': 'forwarder.stomp',
+    'hostname': hostname,
+    'name': name
+  }
+  z = props.copy()
+  z.update(a)
+  eprint(json.dumps(z))
 
-
-log_json('starting', dict([(property, value) for property, value in vars(options).iteritems()]))
+log_json('starting', dict([(property, value) for property, value in vars(options).items()]))
 
 stomp_address = args[0].split(":")
 
@@ -57,81 +60,79 @@ stomp = StompClient(stomp_address[0], int(stomp_address[1]))
 cred = options.credentials.split(":")
 stomp.connect(cred[0], cred[1], options.vhost)
 
-
 def to_event(event):
-    try:
-        match = re.match(r'(\d\d\d\d-\d\d-\d\d[ T]\d\d:\d\d:\d\d[.,])(\d*)([+-]\d\d\d\d)?.*', event['line'])
-        if match:
-            timestamp = match.group(1) + match.group(2)[0:3]
-            timestamp += match.group(3) if match.group(3) else "+0000"
-            if timestamp[10] == ' ':
-                timestamp = timestamp[0:10] + 'T' + timestamp[11:]
-        else:
-            timestamp = "%s%s%02d00" % (event['time'][0:-3], "+" if time.altzone <= 0 else "-", time.altzone/60/60*-1)
-    except ValueError, e:
-        timestamp = event['time']
-    return {
-        "@timestamp": timestamp,
-        "host": options.hostname,
-        "message": event_line(event['line'].strip()),
-    }
-
+  try:
+    match = re.match(r'(\d\d\d\d-\d\d-\d\d[ T]\d\d:\d\d:\d\d[.,])(\d*)([+-]\d\d\d\d)?.*', event['line'])
+    if match:
+      timestamp = match.group(1) + match.group(2)[0:3]
+      timestamp += match.group(3) if match.group(3) else "+0000"
+      if timestamp[10] == ' ':
+        timestamp = timestamp[0:10] + 'T' + timestamp[11:]
+    else:
+      timestamp = "%s%s%02d00" % (event['time'][0:-3], "+" if time.altzone <= 0 else "-", time.altzone/60/60*-1)
+  except ValueError as e:
+    timestamp = event['time']
+  return {
+    "@timestamp": timestamp,
+    "host": options.hostname,
+    "message": event_line(event['line'].strip()),
+  }
 
 def starts_with_space(line):
-    return len(line) > options.offset and line[options.offset] in [' ', '\t']
+  return len(line) > options.offset and line[options.offset] in [' ', '\t']
 
 def event_line(line):
-    return line[options.offset:] if options.cut else line
+  return line[options.offset:] if options.cut else line
 
 def sending():
-    lastEvent = None
-    event = None
-    while event != exit_token:
-        count = 0;
-        payload = ''
-        while count < 1 and event != exit_token and (not q.empty() or count == 0):
-            try:
-                event = q.get(True, 1)
-            except Queue.Empty, e:
-                event = None
-            if event and event != exit_token and starts_with_space(event['line']):
-                lastEvent['line'] += "\n" + event_line(event['line'])
-            else:
-                if lastEvent:
-                    payload += json.dumps(to_event(lastEvent))
-                    count += 1
-                    lastEvent = None
-                    if not event:
-                        break
-                lastEvent = event
+  lastEvent = None
+  event = None
+  while event != exit_token:
+    count = 0
+    payload = ''
+    while count < 1 and event != exit_token and (not q.empty() or count == 0):
+      try:
+        event = q.get(True, 1)
+      except queue.Empty as e:
+        event = None
+      if event and event != exit_token and starts_with_space(event['line']):
+        lastEvent['line'] += "\n" + event_line(event['line'])
+      else:
+        if lastEvent:
+          payload += json.dumps(to_event(lastEvent))
+          count += 1
+          lastEvent = None
+          if not event:
+            break
+        lastEvent = event
 
-        if count > 0:
-            stomp.send(options.exchange, options.routing_key, payload)
+    if count > 0:
+      stomp.send(options.exchange, options.routing_key, payload)
 
 t = threading.Thread(target=sending)
 t.daemon = True
 t.start()
 
 try:
-    last_heartbeat = time.time();
-    while 1:
-        rlist, _, _ = select([sys.stdin], [], [], 0.1)
-        if rlist:
-            line = sys.stdin.readline()
-            if not line:
-                q.put(exit_token)
-                break
-            line = line[0:-1]
-            if len(line) > 0:
-                q.put({'time': datetime.datetime.now().isoformat(), 'line': line})
+  last_heartbeat = time.time()
+  while 1:
+    rlist, _, _ = select([sys.stdin], [], [], 0.1)
+    if rlist:
+      line = sys.stdin.readline()
+      if not line:
+        q.put(exit_token)
+        break
+      line = line[0:-1]
+      if len(line) > 0:
+        q.put({'time': datetime.datetime.now().isoformat(), 'line': line})
 
-        now = time.time();
-        if now - last_heartbeat >= options.heartbeat:
-            log_json('heartbeat')
-            last_heartbeat += options.heartbeat
+    now = time.time()
+    if now - last_heartbeat >= options.heartbeat:
+      log_json('heartbeat')
+      last_heartbeat += options.heartbeat
 
+  t.join()
+except KeyboardInterrupt as e:
+  pass
 
-    t.join()
-except KeyboardInterrupt, e:
-    pass
 
