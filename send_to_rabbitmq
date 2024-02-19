@@ -1,13 +1,29 @@
 #!/usr/bin/env python
 
-import sys, json, os, urllib, urllib2, datetime, re, Queue, threading, time, optparse, base64
+import sys, json, os, datetime, re, threading, time, optparse, base64
 
+try:
+  import urllib.parse as quote  # Python 3+
+except ImportError:
+  import urllib as quote  # Python 2.X
+
+try:
+  # For Python 3.0 and later
+  import urllib.request as urlopen
+except ImportError:
+  # Fall back to Python 2's urllib2
+  import urllib2 as urlopen
+
+try:
+  import queue           # Python 3 import
+except ImportError:
+  import queue as queue  # If queue missing, we're on Py2, import Py2 as Py3 name
 
 class ExitToken:
-    pass
+  pass
 exit_token = ExitToken()
 
-q = Queue.Queue(1000)
+q = queue.Queue(1000)
 
 hostname = os.popen("hostname").read().strip()
 
@@ -23,13 +39,13 @@ parser.add_option('-u', '--credentials USERNAME:PASSWORD', action="store", dest=
 options, args = parser.parse_args()
 
 if not options.exchange:
-    parser.error('Exchange not given')
+  parser.error('Exchange not given')
 
 if len(args) == 0:
-    parser.error('RabbitMQ URL not given')
+  parser.error('RabbitMQ URL not given')
 
-encoded_vhost = urllib.quote(options.vhost, safe='')
-encoded_exchange = urllib.quote(options.exchange, safe='')
+encoded_vhost = quote(options.vhost, safe='')
+encoded_exchange = quote(options.exchange, safe='')
 rabbitmq_url = args[0]
 
 
@@ -38,85 +54,83 @@ base64string = base64.standard_b64encode('%s:%s' % (cred[0], cred[1])).replace('
 uri = "%s/api/exchanges/%s/%s/publish" % (rabbitmq_url, encoded_vhost, encoded_exchange)
 
 
-
 def to_event(event):
-    try:
-        match = re.match(r'(\d\d\d\d-\d\d-\d\d[ T]\d\d:\d\d:\d\d[.,])(\d*)([+-]\d\d\d\d)?.*', event['line'])
-        if match:
-            timestamp = match.group(1) + match.group(2)[0:3]
-            timestamp += match.group(3) if match.group(3) else "+0000"
-            if timestamp[10] == ' ':
-                timestamp = timestamp[0:10] + 'T' + timestamp[11:]
-        else:
-            timestamp = "%s%s%02d00" % (event['time'][0:-3], "+" if time.altzone <= 0 else "-", time.altzone/60/60*-1)
-    except ValueError, e:
-        timestamp = event['time']
-    data = {
-        "@timestamp": timestamp,
-        "host": options.hostname,
-        "message": event['line'].strip(),
-    }
-    return json.dumps(data)
-
+  try:
+    match = re.match(r'(\d\d\d\d-\d\d-\d\d[ T]\d\d:\d\d:\d\d[.,])(\d*)([+-]\d\d\d\d)?.*', event['line'])
+    if match:
+      timestamp = match.group(1) + match.group(2)[0:3]
+      timestamp += match.group(3) if match.group(3) else "+0000"
+      if timestamp[10] == ' ':
+        timestamp = timestamp[0:10] + 'T' + timestamp[11:]
+    else:
+      timestamp = "%s%s%02d00" % (event['time'][0:-3], "+" if time.altzone <= 0 else "-", time.altzone/60/60*-1)
+  except ValueError as e:
+    timestamp = event['time']
+  data = {
+    "@timestamp": timestamp,
+    "host": options.hostname,
+    "message": event['line'].strip(),
+  }
+  return json.dumps(data)
 
 def starts_with_space(line):
-    return len(line) > options.offset and line[options.offset] in [' ', '\t']
+  return len(line) > options.offset and line[options.offset] in [' ', '\t']
 
 def sending():
-    running = True
-    lastEvent = None
-    event = None
-    while event != exit_token:
-        count = 0;
-        payload = ''
-        while count < 1 and event != exit_token and (not q.empty() or count == 0):
-            try:
-                event = q.get(True, 1)
-            except Queue.Empty, e:
-                event = None
-            if event and event != exit_token and starts_with_space(event['line']):
-                lastEvent['line'] += "\n" + event['line']
-            else:
-                if lastEvent:
-                    payload += json.dumps({
-                        "properties":{},
-                        "routing_key":options.routing_key,
-                        "payload":to_event(lastEvent),
-                        "payload_encoding":"string"}
-                    )
-                    # payload += "{\"index\": {}}\n" + to_event(lastEvent) + "\n"
-                    count += 1
-                    lastEvent = None
-                    if not event:
-                        break
-                lastEvent = event
+  running = True
+  lastEvent = None
+  event = None
+  while event != exit_token:
+    count = 0
+    payload = ''
+    while count < 1 and event != exit_token and (not q.empty() or count == 0):
+      try:
+        event = q.get(True, 1)
+      except queue.Empty as e:
+        event = None
+      if event and event != exit_token and starts_with_space(event['line']):
+        lastEvent['line'] += "\n" + event['line']
+      else:
+        if lastEvent:
+          payload += json.dumps({
+            "properties":{},
+            "routing_key":options.routing_key,
+            "payload":to_event(lastEvent),
+            "payload_encoding":"string"}
+          )
+          # payload += "{\"index\": {}}\n" + to_event(lastEvent) + "\n"
+          count += 1
+          lastEvent = None
+          if not event:
+            break
+        lastEvent = event
 
-        if count > 0:
-            request = urllib2.Request(uri)
-            request.add_header("Authorization", "Basic %s" % base64string)
-            # print "----------------------"
-            # print "sending to: %s" % uri
-            # print payload[0:-1]
+    if count > 0:
+      request = urlopen.Request(uri)
+      request.add_header("Authorization", "Basic %s" % base64string)
+      # print "----------------------"
+      # print "sending to: %s" % uri
+      # print payload[0:-1]
 
-            urllib2.urlopen(request, payload)
-            # print "done"
+      urlopen.urlopen(request, payload)
+      # print "done"
 
-            # urllib2.urlopen(uri, payload)
+      # urlopen.urlopen(uri, payload)
 
 t = threading.Thread(target=sending)
 t.daemon = True
 t.start()
 
 try:
-    while 1:
-        line = sys.stdin.readline()
-        if not line:
-            q.put(exit_token)
-            break
-        line = line[0:-1]
-        if len(line) > 0:
-            q.put({'time': datetime.datetime.now().isoformat(), 'line': line})
-    t.join()
-except KeyboardInterrupt, e:
-    pass
+  while 1:
+    line = sys.stdin.readline()
+    if not line:
+      q.put(exit_token)
+      break
+    line = line[0:-1]
+    if len(line) > 0:
+      q.put({'time': datetime.datetime.now().isoformat(), 'line': line})
+  t.join()
+except KeyboardInterrupt as e:
+  pass
 

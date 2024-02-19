@@ -1,7 +1,12 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
-import ConfigParser
+
+try:
+  from configparser import ConfigParser       # Python 3 import
+except ImportError:
+  from ConfigParser import ConfigParser   # If ConfigParser missing, we're on Py3, import Py2 as Py3 name
+
 import os
 import optparse
 import sys
