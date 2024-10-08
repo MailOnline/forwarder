@@ -134,13 +134,13 @@ Run Tests
 
 The easiest way to run the tests is using docker:
 ```shell
-docker run --rm -it $(docker build -q .)
+docker run --rm -it -v $(pwd):/app $(docker build -q .)
 ```
 
 To help debug, you can also make the test intermediary persistent by setting a volume for /tmp dir:
 ```shell
 mkdir tmp
-docker run --rm -it -v $(pwd)/tmp:/tmp $(docker build -q .)
+docker run --rm -it -v $(pwd):/app -v $(pwd)/tmp:/tmp $(docker build -q .)
 ```
 
 that will leave the intermediary files in the `tmp` folder.
