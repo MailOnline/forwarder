@@ -145,6 +145,16 @@ docker run --rm -it -v $(pwd):/app -v $(pwd)/tmp:/tmp $(docker build -q .)
 
 that will leave the intermediary files in the `tmp` folder.
 
+To run test manually from from within the container:
+```shell
+docker run --rm -it -v $(pwd):/app $(docker build -q .) bash
+. prepare_tests_env.sh
+```
+After that, you can run the tests manually, like:
+```shell
+. tests/test-filter.sh
+```
+
 License
 -------
 
