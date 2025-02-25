@@ -1,0 +1,79 @@
+#!/usr/bin/env python
+
+import sys
+import time
+import json
+import threading
+import signal
+import optparse
+
+exceptions = {}
+in_exception = False
+exception_lines = []
+running_lock = threading.Lock()
+
+parser = optparse.OptionParser(usage="Usage: %prog [options]")
+
+parser.add_option('-n', '--namespace', action="store", dest="ns", help="ns parameter of the json output.")
+parser.add_option('-i', '--interval', action="store", dest="interval",
+                  help="How often (in seconds) should flush exceptions.", default=5)
+
+options, args = parser.parse_args()
+
+def exception_ended():
+    global in_exception, exception_lines, running_lock
+    exception_string = "\n".join(exception_lines)
+    running_lock.acquire(True)
+    try:
+        exceptions[exception_string] = exceptions.get(exception_string, 0) + 1
+    finally:
+        running_lock.release()
+
+    exception_lines = []
+    in_exception = False
+
+def process_input():
+    global in_exception, exception_lines
+    for line in sys.stdin:
+        line = line.rstrip()
+        if not in_exception and (line.startswith("Error") or line.startswith("Exception")):
+            in_exception = True
+            exception_lines.append(line)
+            continue
+
+        if in_exception:
+            if line.startswith(' '):
+                exception_lines.append(line)
+            else:
+                exception_ended()
+                in_exception = False
+    flush()
+
+
+def print_exceptions():
+    global exceptions, running_lock
+    interval = float(options.interval)
+    while True:
+        time.sleep(interval)
+        flush()
+
+
+def flush():
+    global exceptions, running_lock
+    localExceptions = {}
+    running_lock.acquire(True)
+    try:
+        localExceptions = exceptions
+        exceptions = {}
+    finally:
+        running_lock.release()
+    for exception, count in localExceptions.items():
+        print(json.dumps({"ns": options.ns, "count": count, "exception": exception}))
+    sys.stdout.flush()
+
+
+thread = threading.Thread(target=print_exceptions)
+thread.daemon = True
+thread.start()
+
+process_input()
