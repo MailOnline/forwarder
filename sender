@@ -7,21 +7,25 @@ import os
 import glob
 import socket
 import optparse
-import md5
+import hashlib
 import zipfile
 import gzip
 import tempfile
 import shutil
 import subprocess
 import threading
-import Queue
 import signal
 import traceback
 
 DEFAULT_SIGNAGURE_LENGTH=256
 
-filter_stopped = Queue.Queue()
-stop_signal = Queue.Queue()
+try:
+  import queue           # Python 3 import
+except ImportError:
+  import Queue as queue  # If queue missing, we're on Py2, import Py2 as Py3 name
+
+filter_stopped = queue.Queue()
+stop_signal = queue.Queue()
 running_lock = threading.Lock()
 
 def should_stop():
@@ -68,7 +72,7 @@ def main():
 			a = options.host.split(":")
 			try:
 				output = Netcat(a[0], int(a[1]), options.retry_on_network_error)
-			except socket.error, e:
+			except socket.error as e:
 				log("Socket error: %s" % str(e))
 				sys.exit(1)
 
@@ -86,7 +90,7 @@ def main():
 					try:
 						last_output.write(line)
 						last_output.flush()
-					except socket.error, e:
+					except socket.error as e:
 						log("Socket error in filer: %s" % e)
 						break
 					except:
@@ -115,7 +119,7 @@ def main():
 							log("That does it. Sending SIGINT.")
 							os.kill(filter.pid, sig)
 							break
-				except OSError, e:
+				except OSError as e:
 					log("An exception happened while waiting for process to finish: %s" % e)
 
 
@@ -184,10 +188,10 @@ class Netcat(object):
 				self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 				self.s.connect(self.addr)
 				self.show_error_message = True
-				break;
-			except socket.error, e:
+				break
+			except socket.error as e:
 				self.error("Socket error: %s" % e)
-			except IOError, e:
+			except IOError as e:
 				self.error("IOError: %s" % e)
 			self.exit_or_retry()
 
@@ -213,9 +217,9 @@ class Netcat(object):
 				self.last_msg = msg
 				self.send_last = False
 				break
-			except socket.error, e:
+			except socket.error as e:
 				self.error("Socket error: %s" % e)
-			except IOError, e:
+			except IOError as e:
 				self.error("IOError: %s" % e)
 			self.send_last = True
 			self.exit_or_retry()
@@ -272,7 +276,7 @@ class Tail(object):
 		temp = '%s-temp' % self.offsetsfn
 		f = open(temp,'w')
 		try:
-			for sig, info in self.offsets.iteritems():
+			for sig, info in self.offsets.items():
 				f.write(info.dump())
 				f.write('\n')
 			f.flush()
@@ -299,13 +303,13 @@ class Tail(object):
 			f.close()
 
 	def generateSignature(self, f):
-		offset = f.tell();
+		offset = f.tell()
 		header = f.read(self.signatureLength)
 		f.seek(offset)
 		if len(header) == 0:
 			return None
 		else:
-			return md5.new(header).hexdigest()
+			return hashlib.md5(header).hexdigest().encode('utf-8')
 
 	def purgeOffsetsNotIn(self, existing):
 		newOffsets = {}
@@ -322,7 +326,7 @@ class Tail(object):
 			if not self.starting or line >= self.starting:
 				self.output.write(line)
 			if should_stop():
-				break;
+				break
 		self.output.flush()
 
 	def isCompressed(self, fn):
@@ -377,7 +381,7 @@ class Tail(object):
 			f.close()
 
 	def processFile(self, f, fn, existing):
-		debug("processFile: %s" % fn)
+		debug("processFile: %s" % fn)	
 		sig = self.generateSignature(f)
 		if not sig:
 			return
@@ -431,7 +435,7 @@ class Tail(object):
 							if os.path.getsize(fn) < self.signatureLength and not self.isCompressed(fn):
 								continue
 							self.processFileByName(fn, existing)
-						except Exception, e:
+						except Exception as e:
 							log("Exception: %s" % e)
 							exc_type, exc_value, exc_traceback = sys.exc_info()
 							traceback.print_tb(exc_traceback)
@@ -451,3 +455,4 @@ if __name__ == '__main__':
 	main()
 
 #import pdb ; pdb.set_trace()
+
