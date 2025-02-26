@@ -129,6 +129,31 @@ Network Protocol
 
 Well, this is pretty "protocol-less", in the sense that when forwarding to a tcp address it will just open the connection and output raw traffic in the same way [netcat](http://en.wikipedia.org/wiki/Netcat) does.
 
+Run Tests
+---------
+
+The easiest way to run the tests is using docker:
+```shell
+docker run --rm -it -v $(pwd):/app $(docker build -q .)
+```
+
+To help debug, you can also make the test intermediary persistent by setting a volume for /tmp dir:
+```shell
+mkdir tmp
+docker run --rm -it -v $(pwd):/app -v $(pwd)/tmp:/tmp $(docker build -q .)
+```
+
+that will leave the intermediary files in the `tmp` folder.
+
+To run test manually from from within the container:
+```shell
+docker run --rm -it -v $(pwd):/app $(docker build -q .) bash
+. prepare_tests_env.sh
+```
+After that, you can run the tests manually, like:
+```shell
+. tests/test-filter.sh
+```
 
 License
 -------
